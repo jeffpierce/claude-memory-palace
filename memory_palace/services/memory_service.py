@@ -174,7 +174,8 @@ def recall(
     min_importance: Optional[int] = None,
     include_archived: bool = False,
     limit: int = 20,
-    detail_level: str = "summary"
+    detail_level: str = "summary",
+    synthesize: bool = True
 ) -> Dict[str, Any]:
     """
     Search memories using semantic search (with keyword fallback).
@@ -187,10 +188,15 @@ def recall(
         min_importance: Only return memories with importance >= this
         include_archived: Include archived memories (default False)
         limit: Maximum memories to return (default 20)
-        detail_level: "summary" for condensed, "verbose" for full content
+        detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=True)
+        synthesize: If True (default), use LLM to synthesize. If False, return raw memory objects with full content.
 
     Returns:
-        Dictionary with synthesized summary (LLM) or text list (fallback)
+        Dictionary with one of three formats:
+        - synthesize=True + LLM available: {"summary": str, "count": int, "search_method": str, "memory_ids": list}
+        - synthesize=True + LLM unavailable: {"summary": str (text list), "count": int, "search_method": str, "memory_ids": list}
+        - synthesize=False: {"memories": list[dict], "count": int, "search_method": str}
+          Note: Raw mode always returns verbose content regardless of detail_level parameter.
     """
     db = get_session()
     try:
@@ -273,6 +279,21 @@ def recall(
             memory.last_accessed_at = datetime.utcnow()
             memory.access_count += 1
         db.commit()
+
+        # Return raw memories if synthesize=False
+        # Force verbose detail when returning raw - cloud AI needs full content
+        if not synthesize:
+            result_memories = []
+            for m in memories:
+                mem_dict = m.to_dict(detail_level="verbose")
+                if m.id in similarity_scores:
+                    mem_dict["similarity_score"] = round(similarity_scores[m.id], 4)
+                result_memories.append(mem_dict)
+            return {
+                "memories": result_memories,
+                "count": len(memories),
+                "search_method": search_method
+            }
 
         # Try LLM synthesis first, fall back to text list
         synthesis = _synthesize_memories_with_llm(memories, query)

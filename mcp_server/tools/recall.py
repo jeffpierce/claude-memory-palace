@@ -18,13 +18,13 @@ def register_recall(mcp):
         min_importance: Optional[int] = None,
         include_archived: bool = False,
         limit: int = 20,
-        detail_level: str = "summary"
+        detail_level: str = "summary",
+        synthesize: bool = True
     ) -> dict[str, Any]:
         """
         Search memories using semantic search (with keyword fallback).
 
         Uses embedding similarity when Ollama is available, falls back to keyword matching otherwise.
-        Returns a natural language synthesis of matching memories (via LLM) or a text list (fallback).
 
         Args:
             query: Search query - uses semantic similarity when Ollama is available, falls back to keyword matching
@@ -34,10 +34,14 @@ def register_recall(mcp):
             min_importance: Only return memories with importance >= this (1-10)
             include_archived: Include archived memories (default false)
             limit: Maximum memories to return (default 20)
-            detail_level: "summary" for condensed, "verbose" for full content
+            detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=True)
+            synthesize: If True (default), use local LLM to synthesize results. If False, return raw memory objects with full content for cloud AI to process.
 
         Returns:
-            Dictionary with summary (natural language synthesis), count, search_method, and memory_ids
+            Dictionary with format depending on synthesize parameter:
+            - synthesize=True: {"summary": str, "count": int, "search_method": str, "memory_ids": list}
+            - synthesize=False: {"memories": list[dict], "count": int, "search_method": str}
+              Raw mode always returns verbose content with similarity_score when available.
         """
         return recall(
             query=query,
@@ -47,5 +51,6 @@ def register_recall(mcp):
             min_importance=min_importance,
             include_archived=include_archived,
             limit=limit,
-            detail_level=detail_level
+            detail_level=detail_level,
+            synthesize=synthesize
         )
