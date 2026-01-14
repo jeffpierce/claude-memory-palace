@@ -811,9 +811,17 @@ Click Next to check your system."""
                     )
 
                     if result.returncode != 0:
-                        self.log_status(f"Warning: venv creation issue: {result.stderr[:200]}")
-                    else:
-                        self.log_status("Virtual environment created.")
+                        self.log_status(f"ERROR: Failed to create virtual environment!")
+                        self.log_status(f"  {result.stderr[:300]}")
+                        self.log_status("")
+                        self.log_status("Try running manually:")
+                        self.log_status(f'  python -m venv "{venv_dir}"')
+                        success = False
+                        self.set_progress(100)
+                        self.root.after(1500, lambda: self.show_complete(False))
+                        return
+
+                    self.log_status("Virtual environment created.")
 
                     # Determine venv pip path
                     if sys.platform == "win32":
@@ -821,7 +829,17 @@ Click Next to check your system."""
                     else:
                         venv_pip = venv_dir / "bin" / "pip"
 
+                    # Verify pip exists
+                    if not venv_pip.exists():
+                        self.log_status(f"ERROR: pip not found at {venv_pip}")
+                        self.log_status("Virtual environment may be corrupted.")
+                        success = False
+                        self.set_progress(100)
+                        self.root.after(1500, lambda: self.show_complete(False))
+                        return
+
                     self.log_status("Installing Memory Palace package into venv...")
+                    self.log_status(f"  Running: pip install -e {self.package_dir}")
 
                     result = subprocess.run(
                         [str(venv_pip), "install", "-e", self.package_dir],
@@ -833,8 +851,15 @@ Click Next to check your system."""
                     if result.returncode == 0:
                         self.log_status("Package installed successfully.")
                     else:
-                        self.log_status(f"Warning: {result.stderr[:200]}")
+                        self.log_status(f"ERROR: Package installation failed!")
+                        self.log_status(f"  {result.stderr[:400]}")
+                        self.log_status("")
+                        self.log_status("Try running manually:")
+                        self.log_status(f'  "{venv_pip}" install -e "{self.package_dir}"')
                         success = False
+                        self.set_progress(100)
+                        self.root.after(1500, lambda: self.show_complete(False))
+                        return
 
                     current_progress += step_size
                     self.set_progress(current_progress)
