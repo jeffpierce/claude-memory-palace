@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-memory-palace"
+version = "0.1.0"
+description = "Persistent memory system for Claude instances with semantic search and handoff messaging"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Jeff Pierce", email = "jeff.r.pierce@gmail.com"}
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["claude", "memory", "mcp", "semantic-search", "llm"]
+
+dependencies = [
+    "sqlalchemy>=2.0",
+    "requests>=2.28",
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pyinstaller>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jrp/claude-memory-palace"
+Repository = "https://github.com/jrp/claude-memory-palace"
+Issues = "https://github.com/jrp/claude-memory-palace/issues"
+
+[project.scripts]
+memory-palace-mcp = "memory_palace.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["memory_palace*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"

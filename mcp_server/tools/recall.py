@@ -1,0 +1,50 @@
+"""
+Recall tool for Claude Memory Palace MCP server.
+"""
+from typing import Any, Optional
+
+from memory_palace.services import recall
+
+
+def register_recall(mcp):
+    """Register the recall tool with the MCP server."""
+
+    @mcp.tool()
+    async def memory_recall(
+        query: str,
+        instance_id: Optional[str] = None,
+        memory_type: Optional[str] = None,
+        subject: Optional[str] = None,
+        min_importance: Optional[int] = None,
+        include_archived: bool = False,
+        limit: int = 20,
+        detail_level: str = "summary"
+    ) -> dict[str, Any]:
+        """
+        Search memories using semantic search (with keyword fallback).
+
+        Uses embedding similarity when Ollama is available, falls back to keyword matching otherwise.
+
+        Args:
+            query: Search query - uses semantic similarity when Ollama is available, falls back to keyword matching
+            instance_id: Filter by instance (optional)
+            memory_type: Filter by type (e.g., fact, preference, event, context, insight, relationship, architecture, gotcha, blocker, solution, workaround, design_decision, or any custom type)
+            subject: Filter by subject
+            min_importance: Only return memories with importance >= this (1-10)
+            include_archived: Include archived memories (default false)
+            limit: Maximum memories to return (default 20)
+            detail_level: "summary" for condensed, "verbose" for full content
+
+        Returns:
+            Dictionary with search_method, count, and memories list
+        """
+        return recall(
+            query=query,
+            instance_id=instance_id,
+            memory_type=memory_type,
+            subject=subject,
+            min_importance=min_importance,
+            include_archived=include_archived,
+            limit=limit,
+            detail_level=detail_level
+        )
