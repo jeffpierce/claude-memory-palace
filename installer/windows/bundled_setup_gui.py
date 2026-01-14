@@ -17,8 +17,93 @@ Flow:
 import os
 import sys
 import shutil
-import tempfile
+import hashlib
 from pathlib import Path
+from typing import Tuple, List, Set
+
+
+def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
+    """
+    Compute the hash of a file.
+
+    Args:
+        file_path: Path to the file to hash
+        algorithm: Hash algorithm to use (default: sha256)
+
+    Returns:
+        Hex digest of the file's hash
+    """
+    hash_obj = hashlib.new(algorithm)
+    with open(file_path, "rb") as f:
+        # Read in 64KB chunks for memory efficiency
+        for chunk in iter(lambda: f.read(65536), b""):
+            hash_obj.update(chunk)
+    return hash_obj.hexdigest()
+
+
+def compare_directories(
+    source_dir: Path,
+    target_dir: Path,
+    skip_dirs: Set[str] = None
+) -> Tuple[List[Path], List[Path], List[Path]]:
+    """
+    Compare two directory trees and determine which files need updating.
+
+    Args:
+        source_dir: The source (bundled) directory
+        target_dir: The target (install) directory
+        skip_dirs: Set of directory names to skip (e.g., {'venv', '__pycache__', '.git'})
+
+    Returns:
+        Tuple of (new_files, changed_files, unchanged_files)
+        All paths are relative to the source directory.
+    """
+    if skip_dirs is None:
+        skip_dirs = {"venv", "__pycache__", ".git", ".idea", "*.egg-info"}
+
+    new_files: List[Path] = []
+    changed_files: List[Path] = []
+    unchanged_files: List[Path] = []
+
+    def should_skip(path: Path) -> bool:
+        """Check if a path should be skipped based on skip_dirs patterns."""
+        for part in path.parts:
+            if part in skip_dirs:
+                return True
+            # Handle glob patterns like *.egg-info
+            for pattern in skip_dirs:
+                if "*" in pattern and part.endswith(pattern.replace("*", "")):
+                    return True
+        return False
+
+    # Walk the source directory
+    for source_file in source_dir.rglob("*"):
+        if source_file.is_dir():
+            continue
+
+        # Get relative path
+        rel_path = source_file.relative_to(source_dir)
+
+        # Skip specified directories
+        if should_skip(rel_path):
+            continue
+
+        target_file = target_dir / rel_path
+
+        if not target_file.exists():
+            # New file - doesn't exist in target
+            new_files.append(rel_path)
+        else:
+            # File exists - compare hashes
+            source_hash = compute_file_hash(source_file)
+            target_hash = compute_file_hash(target_file)
+
+            if source_hash != target_hash:
+                changed_files.append(rel_path)
+            else:
+                unchanged_files.append(rel_path)
+
+    return new_files, changed_files, unchanged_files
 
 
 def get_bundled_package_path() -> Path:
@@ -59,23 +144,69 @@ def is_already_extracted() -> bool:
 def extract_package() -> Path:
     """
     Extract the bundled package to permanent install location.
-    Always overwrites existing files to ensure updates are applied.
+    Uses smart checksum comparison to only copy new or changed files.
 
     Returns the path to the extracted package.
     """
     bundled_path = get_bundled_package_path()
     install_path = get_install_location()
 
-    print(f"Extracting package to: {install_path}")
-    print(f"Copying from: {bundled_path}")
+    print(f"Install location: {install_path}")
+    print(f"Bundled package: {bundled_path}")
+    print()
 
-    # Ensure parent exists
-    install_path.parent.mkdir(parents=True, exist_ok=True)
+    # Ensure install directory exists
+    install_path.mkdir(parents=True, exist_ok=True)
 
-    # Always copy/overwrite package files
-    shutil.copytree(bundled_path, install_path, dirs_exist_ok=True)
+    # Check if this is a fresh install or an upgrade
+    if not is_already_extracted():
+        # Fresh install - copy everything
+        print("Fresh install detected - copying all files...")
+        shutil.copytree(bundled_path, install_path, dirs_exist_ok=True)
+        print("Package extracted successfully!")
+    else:
+        # Upgrade - compare files and only copy what changed
+        print("Existing installation detected - checking for updates...")
+        print()
 
-    print("Package extracted successfully!")
+        new_files, changed_files, unchanged_files = compare_directories(
+            bundled_path, install_path
+        )
+
+        # Log summary
+        print(f"  New files:       {len(new_files)}")
+        print(f"  Changed files:   {len(changed_files)}")
+        print(f"  Unchanged files: {len(unchanged_files)}")
+        print()
+
+        # Copy new files
+        if new_files:
+            print("Adding new files:")
+            for rel_path in new_files:
+                source_file = bundled_path / rel_path
+                target_file = install_path / rel_path
+
+                # Ensure target directory exists
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+
+                shutil.copy2(source_file, target_file)
+                print(f"  + {rel_path}")
+
+        # Copy changed files
+        if changed_files:
+            print("Updating changed files:")
+            for rel_path in changed_files:
+                source_file = bundled_path / rel_path
+                target_file = install_path / rel_path
+
+                shutil.copy2(source_file, target_file)
+                print(f"  * {rel_path}")
+
+        if not new_files and not changed_files:
+            print("All files are up to date - no changes needed.")
+        else:
+            print()
+            print("Package updated successfully!")
 
     return install_path
 
