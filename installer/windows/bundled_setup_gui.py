@@ -272,7 +272,7 @@ def run_setup_gui(package_dir: Path):
         def __init__(self, package_dir: Path):
             self.root = tk.Tk()
             self.root.title("Claude Memory Palace Setup")
-            self.root.geometry("600x500")
+            self.root.geometry("600x550")
             self.root.resizable(False, False)
 
             # Center window on screen
@@ -362,7 +362,7 @@ Click Next to check your system."""
 
             # Navigation
             nav_frame = ttk.Frame(self.container)
-            nav_frame.pack(fill=tk.X, pady=20)
+            nav_frame.pack(fill=tk.X, padx=20, pady=20)
 
             ttk.Button(
                 nav_frame,
@@ -425,7 +425,7 @@ Click Next to check your system."""
 
             # Navigation
             nav_frame = ttk.Frame(self.container)
-            nav_frame.pack(fill=tk.X, pady=20)
+            nav_frame.pack(fill=tk.X, padx=20, pady=20)
 
             ttk.Button(
                 nav_frame,
@@ -434,16 +434,16 @@ Click Next to check your system."""
                 width=15
             ).pack(side=tk.LEFT)
 
-            self.next_btn = ttk.Button(
+            ttk.Button(
                 nav_frame,
                 text="Next",
                 command=self.show_installation_options,
                 width=15
-            )
-            self.next_btn.pack(side=tk.RIGHT)
+            ).pack(side=tk.RIGHT)
 
-            # Run checks in background (button always enabled, user can proceed whenever)
-            threading.Thread(target=self.run_dependency_checks, daemon=True).start()
+            # Run checks synchronously - update UI after each one
+            self.root.update()
+            self.run_dependency_checks()
 
         def update_status(self, key: str, success: bool, detail: str):
             """Update a status item."""
@@ -504,53 +504,53 @@ Click Next to check your system."""
                 detail_label.config(text=message, foreground="blue")
 
         def run_dependency_checks(self):
-            """Run all dependency checks."""
-            try:
-                # Python
-                success, detail = self.checker.check_python()
-                self.dependency_results["python"] = (success, detail)
-                self.root.after(0, lambda s=success, d=detail: self.update_status("python", s, d))
+            """Run all dependency checks synchronously."""
+            # Python
+            success, detail = self.checker.check_python()
+            self.dependency_results["python"] = (success, detail)
+            self.update_status("python", success, detail)
+            self.root.update()
 
-                if not success:
-                    version = sys.version_info
-                    current = f"{version.major}.{version.minor}"
-                    self.root.after(100, lambda: self.show_python_upgrade_dialog(current))
+            if not success:
+                version = sys.version_info
+                current = f"{version.major}.{version.minor}"
+                self.show_python_upgrade_dialog(current)
 
-                # Ollama
-                success, detail = self.checker.check_ollama()
-                self.dependency_results["ollama"] = (success, detail)
-                self.root.after(0, lambda s=success, d=detail: self.update_status("ollama", s, d))
+            # Ollama
+            success, detail = self.checker.check_ollama()
+            self.dependency_results["ollama"] = (success, detail)
+            self.update_status("ollama", success, detail)
+            self.root.update()
 
-                # GPU
-                success, detail, vram = self.checker.check_nvidia_gpu()
-                self.dependency_results["gpu"] = (success, detail)
-                self.vram_gb = vram
-                self.model_recommendations = self.checker.get_model_recommendations(vram)
-                self.root.after(0, lambda s=success, d=detail: self.update_status("gpu", s, d))
+            # GPU
+            success, detail, vram = self.checker.check_nvidia_gpu()
+            self.dependency_results["gpu"] = (success, detail)
+            self.vram_gb = vram
+            self.model_recommendations = self.checker.get_model_recommendations(vram)
+            self.update_status("gpu", success, detail)
+            self.root.update()
 
-                # Embedding model
-                if self.model_recommendations:
-                    embedding_model = self.model_recommendations.get("embedding", "snowflake-arctic-embed:l")
-                    success, detail = self.checker.check_ollama_model(embedding_model)
-                    self.dependency_results["embedding"] = (success, detail)
-                    self.root.after(0, lambda s=success, d=detail: self.update_status("embedding", s, d))
-                else:
-                    self.dependency_results["embedding"] = (False, "Need GPU info first")
-                    self.root.after(0, lambda: self.update_status("embedding", False, "Need GPU info first"))
+            # Embedding model
+            if self.model_recommendations:
+                embedding_model = self.model_recommendations.get("embedding", "snowflake-arctic-embed:l")
+                success, detail = self.checker.check_ollama_model(embedding_model)
+                self.dependency_results["embedding"] = (success, detail)
+                self.update_status("embedding", success, detail)
+            else:
+                self.dependency_results["embedding"] = (False, "Need GPU info first")
+                self.update_status("embedding", False, "Need GPU info first")
+            self.root.update()
 
-                # LLM model (optional)
-                if self.model_recommendations:
-                    llm_model = self.model_recommendations.get("llm", "qwen2.5:7b")
-                    success, detail = self.checker.check_ollama_model(llm_model)
-                    self.dependency_results["llm"] = (success, detail)
-                    self.root.after(0, lambda s=success, d=detail: self.update_status("llm", s, d))
-                else:
-                    self.dependency_results["llm"] = (False, "Need GPU info first")
-                    self.root.after(0, lambda: self.update_status("llm", False, "Need GPU info first"))
-
-            except Exception as e:
-                # If anything fails, just log it - button is always enabled
-                print(f"Dependency check error: {e}")
+            # LLM model (optional)
+            if self.model_recommendations:
+                llm_model = self.model_recommendations.get("llm", "qwen2.5:7b")
+                success, detail = self.checker.check_ollama_model(llm_model)
+                self.dependency_results["llm"] = (success, detail)
+                self.update_status("llm", success, detail)
+            else:
+                self.dependency_results["llm"] = (False, "Need GPU info first")
+                self.update_status("llm", False, "Need GPU info first")
+            self.root.update()
 
         def show_installation_options(self):
             """Screen 3: Installation options screen."""
