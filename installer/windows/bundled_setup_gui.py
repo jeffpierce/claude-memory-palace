@@ -889,24 +889,85 @@ Click Next to check your system."""
                 if self.configure_claude.get():
                     self.log_status("Configuring Claude Desktop...")
                     try:
-                        # Import the configure module from the extracted package
-                        sys.path.insert(0, self.package_dir)
-                        from memory_palace.setup.configure_claude import configure_claude_desktop
-                        self.configure_result = configure_claude_desktop(
-                            interactive=False,
-                            cwd_override=self.package_dir
-                        )
-                        if self.configure_result.success:
-                            self.log_status("Claude Desktop configured successfully!")
-                            if self.configure_result.backup_path:
-                                self.log_status(f"  (Backup: {self.configure_result.backup_path})")
+                        # Inline the configure logic to avoid import issues
+                        # and ensure proper JSON escaping
+                        import json as json_module
+                        import platform
+
+                        # Get Claude Desktop config path
+                        system = platform.system().lower()
+                        if system == "windows":
+                            appdata = os.environ.get("APPDATA")
+                            if appdata:
+                                config_path = Path(appdata) / "Claude" / "claude_desktop_config.json"
+                            else:
+                                config_path = Path.home() / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json"
+                        elif system == "darwin":
+                            config_path = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
                         else:
-                            self.log_status(f"Configure warning: {self.configure_result.message}")
-                    except ImportError as e:
-                        self.log_status(f"Could not import configure module: {e}")
-                        self.configure_result = None
+                            config_path = Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+
+                        self.log_status(f"Config path: {config_path}")
+
+                        # Check if Claude Desktop is installed
+                        if not config_path.parent.exists():
+                            self.log_status("Claude Desktop config directory not found.")
+                            self.log_status("Is Claude Desktop installed?")
+                            self.configure_result = type('obj', (object,), {'success': False, 'message': 'Claude Desktop not found'})()
+                        else:
+                            # Build the venv python path
+                            package_path = Path(self.package_dir)
+                            if system == "windows":
+                                venv_python = package_path / "venv" / "Scripts" / "python.exe"
+                            else:
+                                venv_python = package_path / "venv" / "bin" / "python"
+
+                            # Create MCP server entry
+                            memory_palace_entry = {
+                                "command": str(venv_python),
+                                "args": ["-m", "mcp_server.server"],
+                                "cwd": str(package_path)
+                            }
+
+                            # Load existing config or create new
+                            existing_config = {"mcpServers": {}}
+                            if config_path.exists():
+                                try:
+                                    with open(config_path, "r", encoding="utf-8") as f:
+                                        existing_config = json_module.load(f)
+                                except json_module.JSONDecodeError:
+                                    self.log_status("Existing config was invalid, creating new one.")
+
+                            # Backup existing config
+                            backup_path = None
+                            if config_path.exists():
+                                backup_path = config_path.with_suffix(".json.backup")
+                                counter = 1
+                                while backup_path.exists():
+                                    backup_path = config_path.with_suffix(f".json.backup.{counter}")
+                                    counter += 1
+                                shutil.copy2(config_path, backup_path)
+                                self.log_status(f"Backed up to: {backup_path.name}")
+
+                            # Merge config
+                            if "mcpServers" not in existing_config:
+                                existing_config["mcpServers"] = {}
+                            existing_config["mcpServers"]["memory-palace"] = memory_palace_entry
+
+                            # Write config - json.dump handles backslash escaping
+                            config_path.parent.mkdir(parents=True, exist_ok=True)
+                            with open(config_path, "w", encoding="utf-8") as f:
+                                json_module.dump(existing_config, f, indent=2)
+
+                            self.log_status("Claude Desktop configured successfully!")
+                            self.configure_result = type('obj', (object,), {
+                                'success': True,
+                                'message': 'configured successfully',
+                                'backup_path': backup_path
+                            })()
+
                     except Exception as e:
-                        self.log_status(f"Configure error: {str(e)[:100]}")
+                        self.log_status(f"Configure error: {str(e)[:200]}")
                         self.configure_result = None
 
                     current_progress += step_size
