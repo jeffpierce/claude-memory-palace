@@ -19,10 +19,10 @@ import sys
 import shutil
 import hashlib
 from pathlib import Path
-from typing import Tuple, List, Set
+from typing import Tuple, List, Set, Optional
 
 
-def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
+def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> Optional[str]:
     """
     Compute the hash of a file.
 
@@ -31,14 +31,18 @@ def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
         algorithm: Hash algorithm to use (default: sha256)
 
     Returns:
-        Hex digest of the file's hash
+        Hex digest of the file's hash, or None if file cannot be read
     """
-    hash_obj = hashlib.new(algorithm)
-    with open(file_path, "rb") as f:
-        # Read in 64KB chunks for memory efficiency
-        for chunk in iter(lambda: f.read(65536), b""):
-            hash_obj.update(chunk)
-    return hash_obj.hexdigest()
+    try:
+        hash_obj = hashlib.new(algorithm)
+        with open(file_path, "rb") as f:
+            # Read in 64KB chunks for memory efficiency
+            for chunk in iter(lambda: f.read(65536), b""):
+                hash_obj.update(chunk)
+        return hash_obj.hexdigest()
+    except (OSError, IOError, PermissionError) as e:
+        print(f"  Warning: Could not read {file_path}: {e}")
+        return None
 
 
 def compare_directories(
@@ -98,12 +102,49 @@ def compare_directories(
             source_hash = compute_file_hash(source_file)
             target_hash = compute_file_hash(target_file)
 
-            if source_hash != target_hash:
+            # If either hash failed, treat as changed (safer to overwrite)
+            if source_hash is None or target_hash is None:
+                changed_files.append(rel_path)
+            elif source_hash != target_hash:
                 changed_files.append(rel_path)
             else:
                 unchanged_files.append(rel_path)
 
     return new_files, changed_files, unchanged_files
+
+
+def safe_copy_file(source_file: Path, target_file: Path) -> bool:
+    """
+    Copy a file with error handling. On Windows, attempts to clear
+    read-only attribute if first copy fails with PermissionError.
+
+    Args:
+        source_file: Source file path
+        target_file: Target file path
+
+    Returns:
+        True if copy succeeded, False otherwise
+    """
+    try:
+        shutil.copy2(source_file, target_file)
+        return True
+    except PermissionError as e:
+        # On Windows, try clearing read-only attribute and retry
+        if sys.platform == "win32" and target_file.exists():
+            try:
+                import stat
+                target_file.chmod(stat.S_IWRITE)
+                shutil.copy2(source_file, target_file)
+                return True
+            except Exception as retry_error:
+                print(f"  Warning: Could not copy {source_file.name}: {retry_error}")
+                return False
+        else:
+            print(f"  Warning: Could not copy {source_file.name}: {e}")
+            return False
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not copy {source_file.name}: {e}")
+        return False
 
 
 def get_bundled_package_path() -> Path:
@@ -158,6 +199,9 @@ def extract_package() -> Path:
     # Ensure install directory exists
     install_path.mkdir(parents=True, exist_ok=True)
 
+    # Track copy failures
+    failed_copies = 0
+
     # Check if this is a fresh install or an upgrade
     if not is_already_extracted():
         # Fresh install - copy everything
@@ -189,8 +233,10 @@ def extract_package() -> Path:
                 # Ensure target directory exists
                 target_file.parent.mkdir(parents=True, exist_ok=True)
 
-                shutil.copy2(source_file, target_file)
-                print(f"  + {rel_path}")
+                if safe_copy_file(source_file, target_file):
+                    print(f"  + {rel_path}")
+                else:
+                    failed_copies += 1
 
         # Copy changed files
         if changed_files:
@@ -199,13 +245,17 @@ def extract_package() -> Path:
                 source_file = bundled_path / rel_path
                 target_file = install_path / rel_path
 
-                shutil.copy2(source_file, target_file)
-                print(f"  * {rel_path}")
+                if safe_copy_file(source_file, target_file):
+                    print(f"  * {rel_path}")
+                else:
+                    failed_copies += 1
 
         if not new_files and not changed_files:
             print("All files are up to date - no changes needed.")
         else:
             print()
+            if failed_copies > 0:
+                print(f"Skipped {failed_copies} file(s) due to errors.")
             print("Package updated successfully!")
 
     return install_path
