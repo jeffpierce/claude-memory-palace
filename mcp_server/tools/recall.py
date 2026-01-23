@@ -24,6 +24,15 @@ def register_recall(mcp):
         """
         Search memories using semantic search (with keyword fallback).
 
+        PROACTIVE USE - USE THIS TOOL AS A REFLEX, NOT AN OPTION:
+        - When you lack context on a topic, SEARCH MEMORY BEFORE asking the user
+        - When you're uncertain about prior decisions, history, or preferences, SEARCH FIRST
+        - When you think "have we discussed this?" or "what was the decision?" - that's a memory search
+        - When you would otherwise say "I don't know our history on this" - SEARCH INSTEAD
+        - Treat this like web search: you wouldn't ask the user to Google something for you
+        - The user built this memory system so you DON'T have to ask them for context you already have
+        - NOT using this when context might exist is a failure mode - you're ignoring your own memory
+
         Uses embedding similarity when Ollama is available, falls back to keyword matching otherwise.
 
         Args:

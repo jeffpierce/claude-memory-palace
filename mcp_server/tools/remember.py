@@ -24,6 +24,16 @@ def register_remember(mcp):
         """
         Store a new memory in the memory palace.
 
+        PROACTIVE USE - STORE MEMORIES WITHOUT BEING ASKED:
+        - When decisions are made, store them (type: design_decision)
+        - When bugs are found and fixed, store the solution (type: solution, gotcha)
+        - When user preferences are expressed, store them (type: preference)
+        - When architectural choices are made, store them (type: architecture)
+        - When blockers are encountered, store them (type: blocker)
+        - When something works that was tricky, store it (type: workaround, solution)
+        - The user shouldn't have to tell you to remember - that's why this system exists
+        - If it would be useful in a future session, STORE IT NOW
+
         Args:
             instance_id: Which Claude instance is storing this (e.g., "desktop", "code", "web")
             memory_type: Type of memory (open-ended - use existing types or create new ones like: fact, preference, event, context, insight, relationship, architecture, gotcha, blocker, solution, workaround, design_decision)

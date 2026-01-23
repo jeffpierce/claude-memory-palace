@@ -117,7 +117,12 @@ def generate_with_llm(
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "keep_alive": "0"  # Unload model immediately - aggressive VRAM strategy
+            "think": True,  # Enable Qwen3 thinking/reasoning mode
+            "keep_alive": "0",  # Unload model immediately - aggressive VRAM strategy
+            "options": {
+                "num_ctx": 65536,   # 64K context window - full Qwen capacity
+                "flash_attn": True  # Flash attention - ~2x KV cache efficiency
+            }
         }
         if system:
             request_body["system"] = system
@@ -129,6 +134,8 @@ def generate_with_llm(
         )
         response.raise_for_status()
         data = response.json()
+        # With think:true, response has "thinking" (reasoning) and "response" (answer)
+        # We only return the final answer, but thinking trace is in data["thinking"]
         return data.get("response")
     except requests.exceptions.RequestException as e:
         # Ollama unavailable or error - fail gracefully

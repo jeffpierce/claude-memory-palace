@@ -14,6 +14,7 @@ from .get_handoffs import register_get_handoffs
 from .mark_handoff_read import register_mark_handoff_read
 from .reflect import register_reflect
 from .jsonl_to_toon import register_jsonl_to_toon
+from .get_memory import register_get_memory
 
 
 def register_all_tools(mcp):
@@ -21,6 +22,7 @@ def register_all_tools(mcp):
     register_remember(mcp)
     register_recall(mcp)
     register_forget(mcp)
+    register_get_memory(mcp)
     register_memory_stats(mcp)
     register_backfill_embeddings(mcp)
     register_send_handoff(mcp)

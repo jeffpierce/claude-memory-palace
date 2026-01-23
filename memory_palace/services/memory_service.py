@@ -98,13 +98,18 @@ def remember(
         db.close()
 
 
-def _synthesize_memories_with_llm(memories: List[Any], query: str) -> Optional[str]:
+def _synthesize_memories_with_llm(
+    memories: List[Any],
+    query: str,
+    similarity_scores: Optional[Dict[int, float]] = None
+) -> Optional[str]:
     """
     Use LLM to synthesize memories into a natural language summary.
 
     Args:
         memories: List of Memory objects to synthesize
         query: The original search query for context
+        similarity_scores: Optional dict mapping memory.id -> similarity score (0.0-1.0)
 
     Returns:
         Natural language synthesis, or None if LLM unavailable
@@ -117,29 +122,69 @@ def _synthesize_memories_with_llm(memories: List[Any], query: str) -> Optional[s
     if not memories:
         return "No memories found matching your query."
 
-    # Build a compact representation for the LLM
+    # Check if all scores are below confidence threshold
+    # (only applies if we have scores - keyword fallback won't have them)
+    has_scores = similarity_scores and len(similarity_scores) > 0
+    all_low_confidence = False
+    if has_scores:
+        scores_list = [s for s in similarity_scores.values() if s >= 0]  # Exclude -1.0 (no embedding)
+        if scores_list and all(s < 0.5 for s in scores_list):
+            all_low_confidence = True
+
+    # Build FULL representation for the LLM - no truncation, let Qwen see everything
     memory_texts = []
     for m in memories:
-        parts = [f"[{m.memory_type}]"]
+        parts = []
+
+        # Add similarity score if available (semantic search only)
+        if has_scores and m.id in similarity_scores:
+            score = similarity_scores[m.id]
+            if score >= 0:  # Don't show -1.0 (no embedding marker)
+                parts.append(f"[similarity: {score:.2f}]")
+
+        # Add metadata and FULL content - no truncation
+        parts.append(f"[type: {m.memory_type}]")
+        parts.append(f"[id: {m.id}]")
         if m.subject:
-            parts.append(f"({m.subject})")
-        parts.append(m.content[:500])  # Truncate long content
+            parts.append(f"[subject: {m.subject}]")
+        parts.append(f"\n{m.content}")  # Full content, no truncation
         memory_texts.append(" ".join(parts))
 
-    memories_block = "\n---\n".join(memory_texts)
+    memories_block = "\n\n---\n\n".join(memory_texts)
 
-    system = """You synthesize memories into concise, natural language summaries.
-Be brief but complete. Focus on key facts, decisions, and context.
-Do NOT use bullet points or lists. Write flowing prose.
-If memories contradict each other, note the discrepancy."""
+    # System prompt: comprehensive report, not brief summary
+    system = """You are a memory analyst synthesizing retrieved memories into a comprehensive report.
+
+YOUR TASK:
+- Write a THOROUGH report that captures all relevant information from the memories
+- Include specific details, dates, names, and context - don't summarize away the details
+- Organize information logically by topic or chronology as appropriate
+- Note any contradictions, gaps, or uncertainties in the data
+- Cross-reference related memories when they connect
+
+RELEVANCE EVALUATION:
+- Assess how well these memories actually answer the query
+- High similarity scores (> 0.7) indicate strong relevance
+- Low scores (< 0.5) suggest tangential matches - acknowledge this
+- It's okay to note "these memories are related but don't directly answer X"
+
+FORMAT:
+- Use clear paragraphs and sections as needed
+- You may use headers, bullet points, or prose - whatever serves clarity
+- Don't artificially compress - if there's a lot of relevant info, write a lot"""
+
+    # Add warning to prompt if all scores are low confidence
+    confidence_note = ""
+    if all_low_confidence:
+        confidence_note = "\n\n**NOTE:** All similarity scores are below 0.5, indicating weak semantic relevance. Evaluate carefully whether these memories actually address the query, or if they're tangential matches.\n"
 
     prompt = f"""Query: {query}
 
-Found {len(memories)} relevant memories:
+Found {len(memories)} memories to analyze:{confidence_note}
 
 {memories_block}
 
-Synthesize these into a brief, natural response (2-4 sentences max):"""
+Write a comprehensive report synthesizing these memories in response to the query:"""
 
     return generate_with_llm(prompt, system=system)
 
@@ -296,7 +341,12 @@ def recall(
             }
 
         # Try LLM synthesis first, fall back to text list
-        synthesis = _synthesize_memories_with_llm(memories, query)
+        # Pass similarity scores if we have them (semantic search only)
+        synthesis = _synthesize_memories_with_llm(
+            memories,
+            query,
+            similarity_scores if similarity_scores else None
+        )
 
         if synthesis:
             # LLM synthesis available - return natural language response
