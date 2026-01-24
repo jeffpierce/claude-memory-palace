@@ -15,7 +15,7 @@ A persistent memory system for Claude instances, enabling semantic search across
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-repo/claude-memory-palace.git
+   git clone https://github.com/jeffpierce/claude-memory-palace.git
    cd claude-memory-palace
    ```
 
@@ -32,8 +32,12 @@ A persistent memory system for Claude instances, enabling semantic search across
 
 3. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+   pip install -e .
    ```
+
+   Or use the installer scripts which handle everything:
+   - **Windows:** `install.bat` or `install.ps1`
+   - **macOS/Linux:** `./install.sh`
 
 4. **Run first-time setup:**
    ```bash
@@ -57,10 +61,10 @@ Add the following to your Claude Desktop MCP configuration:
   "mcpServers": {
     "memory-palace": {
       "command": "python",
-      "args": ["-m", "memory_palace.mcp_server"],
+      "args": ["-m", "mcp_server.server"],
       "cwd": "C:\\path\\to\\claude-memory-palace",
       "env": {
-        "MEMORY_PALACE_DB": "C:\\path\\to\\your\\memories.db"
+        "OLLAMA_HOST": "http://localhost:11434"
       }
     }
   }
@@ -77,17 +81,27 @@ Once configured, Claude will have access to the following memory tools:
 
 | Tool | Description |
 |------|-------------|
-| `sandy_remember` | Store a new memory |
-| `sandy_recall` | Search memories using semantic search |
-| `sandy_forget` | Archive a memory (soft delete) |
-| `sandy_memory_stats` | Get overview of memory system |
+| `memory_remember` | Store a new memory |
+| `memory_recall` | Search memories using semantic search |
+| `memory_forget` | Archive a memory (soft delete) |
+| `memory_get` | Retrieve memories by ID |
+| `memory_stats` | Get overview of memory system |
 
 ### Reflection Tools
 
 | Tool | Description |
 |------|-------------|
-| `sandy_reflect` | Extract memories from conversation transcripts |
-| `backfill_embeddings` | Generate embeddings for memories that don't have them |
+| `memory_reflect` | Extract memories from conversation transcripts |
+| `memory_backfill_embeddings` | Generate embeddings for memories that don't have them |
+| `convert_jsonl_to_toon` | Convert JSONL transcripts to chunked TOON format |
+
+### Handoff Tools
+
+| Tool | Description |
+|------|-------------|
+| `handoff_send` | Send message to another Claude instance |
+| `handoff_get` | Check for messages from other instances |
+| `handoff_mark_read` | Mark a handoff message as read |
 
 ### Example Usage
 
@@ -112,10 +126,27 @@ Once configured, Claude will have access to the following memory tools:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MEMORY_PALACE_DB` | Path to SQLite database | `./memories.db` |
-| `OLLAMA_HOST` | Ollama server address | `http://localhost:11434` |
-| `EMBED_MODEL` | Embedding model name | Auto-detected |
-| `LLM_MODEL` | LLM model for reflection | Auto-detected |
+| `MEMORY_PALACE_DATA_DIR` | Data directory | `~/.memory-palace` |
+| `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
+| `MEMORY_PALACE_EMBEDDING_MODEL` | Embedding model name | Auto-detected |
+| `MEMORY_PALACE_LLM_MODEL` | LLM model for reflection | Auto-detected |
+| `MEMORY_PALACE_INSTANCE_ID` | Default instance ID | `unknown` |
+
+### Config File
+
+Configuration is loaded from `~/.memory-palace/config.json`:
+
+```json
+{
+  "ollama_url": "http://localhost:11434",
+  "embedding_model": null,
+  "llm_model": null,
+  "db_path": "~/.memory-palace/memories.db",
+  "instances": ["desktop", "code", "web"]
+}
+```
+
+Environment variables override config file values.
 
 ### Model Configuration
 
@@ -156,16 +187,25 @@ If using CPU inference, performance will be significantly slower. Consider:
 
 ```
 claude-memory-palace/
+├── mcp_server/
+│   ├── server.py          # MCP server entry point
+│   └── tools/             # Tool implementations
+│       ├── remember.py
+│       ├── recall.py
+│       ├── forget.py
+│       ├── reflect.py
+│       └── ...
 ├── memory_palace/
-│   ├── mcp_server.py      # MCP server entry point
-│   ├── tools.py           # Tool implementations
+│   ├── config.py          # Configuration handling
 │   ├── models.py          # SQLAlchemy models
 │   ├── database.py        # Database connection
-│   └── embeddings.py      # Ollama embedding client
+│   ├── embeddings.py      # Ollama embedding client
+│   └── llm.py             # LLM integration
 ├── setup/
-│   ├── detect_gpu.py      # GPU detection
-│   ├── model_recommendations.py  # Model selection
 │   └── first_run.py       # Setup wizard
+├── install.sh             # macOS/Linux installer
+├── install.bat            # Windows installer (cmd)
+├── install.ps1            # Windows installer (PowerShell)
 └── docs/
     ├── README.md          # This file
     └── models.md          # Model guide

@@ -19,11 +19,14 @@ See [docs/README.md](docs/README.md) for detailed installation instructions.
 
 ```bash
 # Clone repository
-git clone https://github.com/your-repo/claude-memory-palace.git
+git clone https://github.com/jeffpierce/claude-memory-palace.git
 cd claude-memory-palace
 
-# Install dependencies
-pip install -r requirements.txt
+# Install (choose one method)
+pip install -e .                    # Editable install from pyproject.toml
+# OR use the installer scripts:
+# Windows: install.bat or install.ps1
+# macOS/Linux: ./install.sh
 
 # Run setup wizard (detects GPU, downloads models)
 python -m setup.first_run
@@ -61,36 +64,60 @@ Once configured with Claude Desktop, use natural language:
 
 | Tool | Description |
 |------|-------------|
-| `sandy_remember` | Store a new memory |
-| `sandy_recall` | Semantic search across memories |
-| `sandy_forget` | Archive a memory |
-| `sandy_reflect` | Extract memories from transcripts |
-| `sandy_memory_stats` | Memory system overview |
+| `memory_remember` | Store a new memory |
+| `memory_recall` | Semantic search across memories |
+| `memory_forget` | Archive a memory |
+| `memory_reflect` | Extract memories from transcripts |
+| `memory_stats` | Memory system overview |
+| `memory_get` | Retrieve memories by ID |
+| `memory_backfill_embeddings` | Generate embeddings for memories without them |
+| `handoff_send` | Send message to another Claude instance |
+| `handoff_get` | Check for messages from other instances |
+| `handoff_mark_read` | Mark a handoff message as read |
 
 ## Architecture
 
 ```
 claude-memory-palace/
-├── memory_palace/       # Core library
-│   ├── mcp_server.py    # MCP protocol server
-│   ├── tools.py         # Tool implementations
-│   └── embeddings.py    # Ollama integration
-├── setup/               # Setup utilities
-│   ├── detect_gpu.py    # GPU detection
-│   └── first_run.py     # Setup wizard
-└── docs/                # Documentation
+├── mcp_server/              # MCP server package
+│   ├── server.py            # Server entry point
+│   └── tools/               # Tool implementations
+├── memory_palace/           # Core library
+│   ├── config.py            # Configuration handling
+│   ├── database.py          # SQLAlchemy database
+│   ├── models.py            # Data models
+│   ├── embeddings.py        # Ollama embedding client
+│   └── llm.py               # LLM integration
+├── setup/                   # Setup utilities
+│   └── first_run.py         # Setup wizard
+└── docs/                    # Documentation
 ```
 
 ## Configuration
 
-Environment variables:
+Configuration is loaded from `~/.memory-palace/config.json` with environment variable overrides.
+
+**Environment variables:**
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MEMORY_PALACE_DB` | Database path | `./memories.db` |
-| `OLLAMA_HOST` | Ollama server | `localhost:11434` |
-| `EMBED_MODEL` | Embedding model | Auto-detected |
-| `LLM_MODEL` | LLM for reflection | Auto-detected |
+| `MEMORY_PALACE_DATA_DIR` | Data directory | `~/.memory-palace` |
+| `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
+| `MEMORY_PALACE_EMBEDDING_MODEL` | Embedding model | Auto-detected |
+| `MEMORY_PALACE_LLM_MODEL` | LLM for reflection | Auto-detected |
+| `MEMORY_PALACE_INSTANCE_ID` | Default instance ID | `unknown` |
+
+**Config file (`~/.memory-palace/config.json`):**
+
+```json
+{
+  "ollama_url": "http://localhost:11434",
+  "embedding_model": null,
+  "llm_model": null,
+  "db_path": "~/.memory-palace/memories.db",
+  "instances": ["desktop", "code", "web"]
+}
+```
 
 ## License
 

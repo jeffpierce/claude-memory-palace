@@ -39,12 +39,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jrp/claude-memory-palace"
-Repository = "https://github.com/jrp/claude-memory-palace"
-Issues = "https://github.com/jrp/claude-memory-palace/issues"
+Homepage = "https://github.com/jeffpierce/claude-memory-palace"
+Repository = "https://github.com/jeffpierce/claude-memory-palace"
+Issues = "https://github.com/jeffpierce/claude-memory-palace/issues"
 
 [project.scripts]
-memory-palace-mcp = "memory_palace.mcp_server:main"
+memory-palace-mcp = "mcp_server.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

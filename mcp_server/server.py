@@ -30,8 +30,8 @@ mcp = server
 register_all_tools(server)
 
 
-async def main():
-    """Run the MCP server."""
+async def main_async():
+    """Run the MCP server (async)."""
     # Initialize database
     init_db()
 
@@ -39,6 +39,11 @@ async def main():
     await server.run_stdio_async()
 
 
-if __name__ == "__main__":
+def main():
+    """Entry point for script installation."""
     import asyncio
-    asyncio.run(main())
+    asyncio.run(main_async())
+
+
+if __name__ == "__main__":
+    main()

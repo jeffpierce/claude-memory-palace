@@ -774,7 +774,7 @@ Click Next to check your system."""
             if self.configure_claude.get():
                 self.log_status("Configuring Claude Desktop...")
                 try:
-                    from memory_palace.setup.configure_claude import configure_claude_desktop
+                    from setup.configure_claude import configure_claude_desktop
                     self.configure_result = configure_claude_desktop(
                         interactive=False,
                         cwd_override=self.package_dir
