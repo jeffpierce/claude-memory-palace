@@ -62,7 +62,7 @@ CREATE TABLE memories (
     keywords TEXT[],
     tags TEXT[],
     importance INTEGER DEFAULT 5 CHECK (importance BETWEEN 1 AND 10),
-    embedding vector(4096),  -- sfr-embedding-mistral dimension
+    embedding vector(768),  -- nomic-embed-text dimension (fits HNSW index limits)
     source_type TEXT,
     source_context TEXT,
     source_session_id TEXT,
@@ -202,12 +202,15 @@ Supported edge relationships:
 }
 ```
 
-## Open Questions
+## Decisions Made
 
-1. **Embedding dimension** - sfr-embedding-mistral is 4096d. Confirm this is correct.
-2. **Keep SQLite support?** - Or fully deprecate for 2.0?
-3. **Alembic vs raw SQL** - For migration management
-4. **Connection pooling** - PgBouncer or just rely on psycopg pool?
+1. **Embedding model** - Using `nomic-embed-text` (768d) instead of sfr-embedding-mistral (4096d)
+   - Fits pgvector 0.6.0 HNSW index limit (2000d max)
+   - Runs efficiently on CPU for AWS deployment
+   - Smaller model = faster embeddings, less memory
+2. **SQLite support** - Migration tool only; 2.0 requires PostgreSQL
+3. **Migration approach** - Raw SQL migration script (no Alembic needed for one-time migration)
+4. **Connection pooling** - SQLAlchemy QueuePool (built-in), PgBouncer optional for high concurrency
 
 ## Notes
 

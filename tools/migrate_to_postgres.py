@@ -182,7 +182,7 @@ def setup_postgres_schema(pg_conn: psycopg2.extensions.connection) -> None:
                 source_type TEXT,
                 source_context TEXT,
                 source_session_id TEXT,
-                embedding vector(4096),
+                embedding vector(768),  -- nomic-embed-text dimensions
                 last_accessed_at TIMESTAMP,
                 access_count INTEGER DEFAULT 0,
                 expires_at TIMESTAMP,

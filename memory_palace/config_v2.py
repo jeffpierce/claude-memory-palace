@@ -28,19 +28,22 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # Ollama configuration
     "ollama_url": "http://localhost:11434",
     "embedding_model": None,  # Auto-detected from Ollama
-    "embedding_dimension": 4096,  # Default for sfr-embedding-mistral
+    "embedding_dimension": 768,  # Default for nomic-embed-text
     "llm_model": None,  # Auto-detected from Ollama
     # Instance configuration
     "instances": ["default"],
 }
 
 # Preferred models for auto-detection (in order of preference)
+# nomic-embed-text is preferred: 768d fits pgvector HNSW limits, runs well on CPU
 PREFERRED_EMBEDDING_MODELS = [
-    "avr/sfr-embedding-mistral:f16",
-    "sfr-embedding-mistral:f16",
-    "sfr-embedding-mistral",
     "nomic-embed-text",
     "mxbai-embed-large",
+    # sfr-embedding-mistral is high quality but 4096d exceeds pgvector 0.6.0 index limits
+    # Uncomment if using pgvector 0.7+ or brute-force search is acceptable
+    # "avr/sfr-embedding-mistral:f16",
+    # "sfr-embedding-mistral:f16",
+    # "sfr-embedding-mistral",
 ]
 
 PREFERRED_LLM_MODELS = [
@@ -53,12 +56,13 @@ PREFERRED_LLM_MODELS = [
 ]
 
 # Model dimensions (for pgvector column sizing)
+# Note: pgvector 0.6.0 HNSW/IVFFlat indexes max at 2000 dimensions
 MODEL_DIMENSIONS = {
-    "sfr-embedding-mistral": 4096,
+    "nomic-embed-text": 768,  # Recommended: fits index limits, fast on CPU
+    "mxbai-embed-large": 1024,
+    "sfr-embedding-mistral": 4096,  # Exceeds index limits in pgvector <0.7
     "avr/sfr-embedding-mistral:f16": 4096,
     "sfr-embedding-mistral:f16": 4096,
-    "nomic-embed-text": 768,
-    "mxbai-embed-large": 1024,
 }
 
 # Module-level config cache

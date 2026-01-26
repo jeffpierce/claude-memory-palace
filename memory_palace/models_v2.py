@@ -83,10 +83,11 @@ class Memory(Base):
     source_context = Column(Text, nullable=True)
     source_session_id = Column(String(100), nullable=True)
     
-    # Embedding - Vector(4096) for sfr-embedding-mistral
+    # Embedding - Vector(768) for nomic-embed-text (recommended)
     # Note: Dimension must match your embedding model
-    # For dynamic dimensions, set via config before model import
-    embedding = Column(Vector(4096), nullable=True) if HAS_PGVECTOR else Column(Text, nullable=True)
+    # nomic-embed-text (768d) is preferred because it fits pgvector HNSW index limits (<2000)
+    # and runs efficiently on CPU for AWS deployment
+    embedding = Column(Vector(768), nullable=True) if HAS_PGVECTOR else Column(Text, nullable=True)
     
     # Lifecycle
     last_accessed_at = Column(DateTime, nullable=True)
