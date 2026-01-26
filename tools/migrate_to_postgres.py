@@ -197,13 +197,13 @@ def setup_postgres_schema(pg_conn: psycopg2.extensions.connection) -> None:
                 created_at TIMESTAMP DEFAULT now(),
                 source_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
                 target_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-                relationship TEXT NOT NULL,
+                relation_type TEXT NOT NULL,
                 strength FLOAT DEFAULT 1.0 CHECK (strength >= 0 AND strength <= 1),
                 bidirectional BOOLEAN DEFAULT false,
-                metadata JSONB DEFAULT '{}',
+                edge_metadata JSONB DEFAULT '{}',
                 created_by TEXT,
                 CONSTRAINT no_self_loops CHECK (source_id != target_id),
-                UNIQUE(source_id, target_id, relationship)
+                UNIQUE(source_id, target_id, relation_type)
             )
         """)
         
@@ -233,8 +233,8 @@ def setup_postgres_schema(pg_conn: psycopg2.extensions.connection) -> None:
         
         cur.execute("CREATE INDEX IF NOT EXISTS idx_edges_source ON memory_edges(source_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_edges_target ON memory_edges(target_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_edges_relationship ON memory_edges(relationship)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_edges_source_rel ON memory_edges(source_id, relationship)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_edges_relation_type ON memory_edges(relation_type)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_edges_source_rel ON memory_edges(source_id, relation_type)")
         
         cur.execute("CREATE INDEX IF NOT EXISTS idx_handoff_to ON handoff_messages(to_instance)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_handoff_from ON handoff_messages(from_instance)")

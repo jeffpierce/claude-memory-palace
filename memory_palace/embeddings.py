@@ -130,18 +130,32 @@ def get_embedding(text: str, model: Optional[str] = None) -> Optional[List[float
         return None
 
 
-def cosine_similarity(a: List[float], b: List[float]) -> float:
+def cosine_similarity(a, b) -> float:
     """
     Compute cosine similarity between two vectors.
 
     Args:
-        a: First vector
-        b: Second vector
+        a: First vector (list or numpy array)
+        b: Second vector (list or numpy array)
 
     Returns:
         Similarity score between -1 and 1
     """
-    if not a or not b or len(a) != len(b):
+    # Handle None cases
+    if a is None or b is None:
+        return 0.0
+    
+    # Convert to list if numpy array
+    try:
+        if hasattr(a, 'tolist'):
+            a = a.tolist()
+        if hasattr(b, 'tolist'):
+            b = b.tolist()
+    except Exception:
+        pass
+    
+    # Check length match
+    if len(a) != len(b):
         return 0.0
 
     dot_product = sum(x * y for x, y in zip(a, b))

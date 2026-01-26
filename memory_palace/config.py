@@ -1,185 +1,65 @@
 """
 Configuration for Claude Memory Palace.
 
-Handles paths, defaults, JSON config file, and environment-based overrides.
-Configuration is loaded from ~/.memory-palace/config.json with sensible defaults.
+v2: Re-exports from config_v2 for PostgreSQL + pgvector support.
+For legacy SQLite config, see config_v1.py.
 """
 
-import json
-import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+# Re-export everything from v2
+from memory_palace.config_v2 import (
+    # Config paths
+    DEFAULT_DATA_DIR,
+    CONFIG_FILE_NAME,
+    DEFAULT_CONFIG,
+    get_config_path,
+    
+    # Model lists
+    PREFERRED_EMBEDDING_MODELS,
+    PREFERRED_LLM_MODELS,
+    MODEL_DIMENSIONS,
+    
+    # Config loading
+    load_config,
+    save_config,
+    clear_config_cache,
+    
+    # Database config
+    get_database_url,
+    get_database_type,
+    is_postgres,
+    is_sqlite,
+    
+    # Model config
+    get_embedding_dimension,
+    get_ollama_url,
+    get_embedding_model,
+    get_llm_model,
+    
+    # Instance config
+    get_instances,
+    
+    # Synthesis config
+    is_synthesis_enabled,
+    
+    # Utilities
+    ensure_data_dir,
+    get_legacy_database_url,
+)
 
+# Legacy compatibility aliases
+DATABASE_URL = get_database_url()
+DATA_DIR = DEFAULT_DATA_DIR
+OLLAMA_HOST = get_ollama_url()
+EMBEDDING_MODEL = get_embedding_model() or "nomic-embed-text"
+DEFAULT_INSTANCE_ID = "unknown"  # Now configured per-call
 
-# Default data directory: ~/.memory-palace/
-DEFAULT_DATA_DIR = Path.home() / ".memory-palace"
-CONFIG_FILE_NAME = "config.json"
+# Legacy path helper
+def get_db_path():
+    """Legacy compatibility - returns path component of database URL."""
+    from pathlib import Path
+    url = get_database_url()
+    if url.startswith("sqlite:///"):
+        return Path(url.replace("sqlite:///", ""))
+    return Path(DEFAULT_DATA_DIR) / "memories.db"
 
-# Default configuration values
-DEFAULT_CONFIG: Dict[str, Any] = {
-    "ollama_url": "http://localhost:11434",
-    "embedding_model": None,  # Auto-detected from Ollama
-    "llm_model": None,  # Auto-detected from Ollama
-    "instances": ["default"],  # User-configurable instance list
-    "db_path": "~/.memory-palace/memories.db",
-}
-
-# Preferred models for auto-detection (in order of preference)
-PREFERRED_EMBEDDING_MODELS = [
-    "avr/sfr-embedding-mistral:f16",
-    "sfr-embedding-mistral:f16",
-    "sfr-embedding-mistral",
-    "nomic-embed-text",
-    "mxbai-embed-large",
-]
-
-PREFERRED_LLM_MODELS = [
-    "qwen3:14b",
-    "qwen3:8b",
-    "qwen3:4b",
-    "llama3.2",
-    "llama3.1",
-    "mistral",
-]
-
-# Module-level config cache
-_config_cache: Optional[Dict[str, Any]] = None
-
-
-def get_config_path() -> Path:
-    """Get the path to the config file."""
-    data_dir = Path(os.environ.get("MEMORY_PALACE_DATA_DIR", DEFAULT_DATA_DIR))
-    return data_dir / CONFIG_FILE_NAME
-
-
-def get_db_path() -> Path:
-    """
-    Get the database path, expanding ~ and creating directory if needed.
-
-    Returns:
-        Path: Absolute path to the database file
-    """
-    config = load_config()
-    db_path = Path(config.get("db_path", DEFAULT_CONFIG["db_path"])).expanduser()
-
-    # Ensure parent directory exists
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    return db_path
-
-
-def load_config() -> Dict[str, Any]:
-    """
-    Load configuration from JSON file, with defaults for missing values.
-
-    Environment variables can override config file values:
-    - MEMORY_PALACE_DATA_DIR: Override data directory
-    - OLLAMA_HOST: Override ollama_url
-    - MEMORY_PALACE_EMBEDDING_MODEL: Override embedding_model
-    - MEMORY_PALACE_LLM_MODEL: Override llm_model
-    - MEMORY_PALACE_INSTANCE_ID: Override default instance
-
-    Returns:
-        Dict containing configuration values
-    """
-    global _config_cache
-
-    if _config_cache is not None:
-        return _config_cache
-
-    config = DEFAULT_CONFIG.copy()
-    config_path = get_config_path()
-
-    # Load from file if it exists
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                file_config = json.load(f)
-                config.update(file_config)
-        except (json.JSONDecodeError, IOError) as e:
-            # Log but continue with defaults
-            print(f"Warning: Could not load config from {config_path}: {e}")
-
-    # Environment variable overrides
-    if os.environ.get("OLLAMA_HOST"):
-        config["ollama_url"] = os.environ["OLLAMA_HOST"]
-
-    if os.environ.get("MEMORY_PALACE_EMBEDDING_MODEL"):
-        config["embedding_model"] = os.environ["MEMORY_PALACE_EMBEDDING_MODEL"]
-
-    if os.environ.get("MEMORY_PALACE_LLM_MODEL"):
-        config["llm_model"] = os.environ["MEMORY_PALACE_LLM_MODEL"]
-
-    if os.environ.get("MEMORY_PALACE_INSTANCE_ID"):
-        default_instance = os.environ["MEMORY_PALACE_INSTANCE_ID"]
-        if default_instance not in config["instances"]:
-            config["instances"].append(default_instance)
-
-    _config_cache = config
-    return config
-
-
-def save_config(config: Optional[Dict[str, Any]] = None) -> None:
-    """
-    Save configuration to JSON file.
-
-    Args:
-        config: Configuration dict to save. If None, saves current config.
-    """
-    global _config_cache
-
-    if config is None:
-        config = load_config()
-
-    config_path = get_config_path()
-
-    # Ensure directory exists
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-
-    # Update cache
-    _config_cache = config
-
-
-def clear_config_cache() -> None:
-    """Clear the config cache, forcing reload on next access."""
-    global _config_cache
-    _config_cache = None
-
-
-def get_ollama_url() -> str:
-    """Get the Ollama base URL from config."""
-    return load_config().get("ollama_url", DEFAULT_CONFIG["ollama_url"])
-
-
-def get_embedding_model() -> Optional[str]:
-    """Get the configured embedding model, or None for auto-detection."""
-    return load_config().get("embedding_model")
-
-
-def get_llm_model() -> Optional[str]:
-    """Get the configured LLM model, or None for auto-detection."""
-    return load_config().get("llm_model")
-
-
-def get_instances() -> List[str]:
-    """Get the list of configured instance IDs."""
-    return load_config().get("instances", DEFAULT_CONFIG["instances"])
-
-
-def ensure_data_dir() -> Path:
-    """Create data directory if it doesn't exist."""
-    data_dir = Path(os.environ.get("MEMORY_PALACE_DATA_DIR", DEFAULT_DATA_DIR))
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir
-
-
-# Legacy compatibility exports
-DATA_DIR = Path(os.environ.get("MEMORY_PALACE_DATA_DIR", DEFAULT_DATA_DIR))
-DATABASE_PATH = DATA_DIR / "memories.db"
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
-DEFAULT_INSTANCE_ID = os.environ.get("MEMORY_PALACE_INSTANCE_ID", "unknown")
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-EMBEDDING_MODEL = os.environ.get("MEMORY_PALACE_EMBEDDING_MODEL", "sfr-embedding-mistral:f16")
+DATABASE_PATH = get_db_path()

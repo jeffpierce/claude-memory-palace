@@ -215,12 +215,12 @@ class MemoryEdge(Base):
     )
     
     # Edge properties
-    relationship = Column(String(50), nullable=False, index=True)
+    relation_type = Column(String(50), nullable=False, index=True)
     strength = Column(Float, default=1.0)  # 0-1, for weighted traversal
     bidirectional = Column(Boolean, default=False)  # If true, edge works both ways
     
-    # Metadata
-    metadata = Column(JSONB, default=dict)  # Flexible extra data
+    # Extra data
+    edge_metadata = Column(JSONB, default=dict)  # Flexible extra data
     created_by = Column(String(50), nullable=True)  # Which instance created this
     
     # Relationships
@@ -228,15 +228,15 @@ class MemoryEdge(Base):
     target = relationship("Memory", foreign_keys=[target_id], back_populates="incoming_edges")
 
     __table_args__ = (
-        UniqueConstraint("source_id", "target_id", "relationship", name="uq_edge_triple"),
+        UniqueConstraint("source_id", "target_id", "relation_type", name="uq_edge_triple"),
         CheckConstraint("source_id != target_id", name="check_no_self_loops"),
         CheckConstraint("strength >= 0 AND strength <= 1", name="check_strength_range"),
-        Index("idx_edges_source_rel", "source_id", "relationship"),
+        Index("idx_edges_source_rel", "source_id", "relation_type"),
     )
 
     def __repr__(self):
         direction = "<->" if self.bidirectional else "->"
-        return f"<MemoryEdge({self.source_id} {direction}[{self.relationship}]{direction} {self.target_id})>"
+        return f"<MemoryEdge({self.source_id} {direction}[{self.relation_type}]{direction} {self.target_id})>"
 
     def to_dict(self):
         """Serialize to dictionary."""
@@ -244,10 +244,10 @@ class MemoryEdge(Base):
             "id": self.id,
             "source_id": self.source_id,
             "target_id": self.target_id,
-            "relationship": self.relationship,
+            "relation_type": self.relation_type,
             "strength": self.strength,
             "bidirectional": self.bidirectional,
-            "metadata": self.metadata,
+            "metadata": self.edge_metadata,  # Expose as 'metadata' in dict for API compatibility
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "created_by": self.created_by,
         }
@@ -309,10 +309,14 @@ RELATIONSHIP_TYPES = {
 }
 
 
-def validate_relationship_type(relationship: str) -> bool:
+def validate_relation_type(relation_type: str) -> bool:
     """
-    Check if a relationship type is valid.
+    Check if a relation type is valid.
     
     Note: Custom types are allowed, these are just the standard ones.
     """
-    return relationship in RELATIONSHIP_TYPES
+    return relation_type in RELATIONSHIP_TYPES
+
+
+# Legacy alias
+validate_relationship_type = validate_relation_type

@@ -31,7 +31,9 @@ def remember(
     content: str,
     subject: Optional[str] = None,
     keywords: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
     importance: int = 5,
+    project: str = "life",
     source_type: str = "explicit",
     source_context: Optional[str] = None,
     source_session_id: Optional[str] = None
@@ -45,7 +47,9 @@ def remember(
         content: The actual memory content
         subject: What/who this memory is about (optional but recommended)
         keywords: List of keywords for searchability
+        tags: Freeform organizational tags (separate from keywords)
         importance: 1-10, higher = more important (default 5)
+        project: Project this memory belongs to (default "life" for non-project memories)
         source_type: How this memory was created (conversation, explicit, inferred, observation)
         source_context: Snippet of original context
         source_session_id: Link back to conversation session
@@ -65,10 +69,12 @@ def remember(
 
         memory = Memory(
             instance_id=instance_id,
+            project=project,
             memory_type=memory_type,
             content=content,
             subject=subject,
             keywords=keywords,
+            tags=tags,
             importance=importance,
             source_type=source_type,
             source_context=source_context,
@@ -254,7 +260,7 @@ def recall(
 
         # Filter out archived unless requested
         if not include_archived:
-            base_query = base_query.filter(Memory.is_archived == 0)
+            base_query = base_query.filter(Memory.is_archived == False)
 
         # Filter by instance if specified
         if instance_id:
@@ -283,7 +289,7 @@ def recall(
             # Score each memory by cosine similarity
             scored_memories = []
             for memory in all_memories:
-                if memory.embedding:
+                if memory.embedding is not None:
                     similarity = cosine_similarity(query_embedding, memory.embedding)
                     scored_memories.append((memory, similarity))
                 else:
@@ -394,7 +400,7 @@ def forget(
             return {"error": f"Memory {memory_id} not found"}
 
         subject_info = f" ({memory.subject})" if memory.subject else ""
-        memory.is_archived = 1
+        memory.is_archived = True
         if reason and memory.source_context:
             memory.source_context = f"{memory.source_context}\n[ARCHIVED: {reason}]"
         elif reason:
@@ -418,15 +424,15 @@ def get_memory_stats() -> Dict[str, Any]:
     try:
         # Total counts
         total = db.query(func.count(Memory.id)).scalar()
-        total_active = db.query(func.count(Memory.id)).filter(Memory.is_archived == 0).scalar()
-        total_archived = db.query(func.count(Memory.id)).filter(Memory.is_archived == 1).scalar()
+        total_active = db.query(func.count(Memory.id)).filter(Memory.is_archived == False).scalar()
+        total_archived = db.query(func.count(Memory.id)).filter(Memory.is_archived == True).scalar()
 
         # By type
         by_type = {}
         type_counts = db.query(
             Memory.memory_type,
             func.count(Memory.id)
-        ).filter(Memory.is_archived == 0).group_by(Memory.memory_type).all()
+        ).filter(Memory.is_archived == False).group_by(Memory.memory_type).all()
         for memory_type, count in type_counts:
             by_type[memory_type] = count
 
@@ -435,23 +441,23 @@ def get_memory_stats() -> Dict[str, Any]:
         instance_counts = db.query(
             Memory.instance_id,
             func.count(Memory.id)
-        ).filter(Memory.is_archived == 0).group_by(Memory.instance_id).all()
+        ).filter(Memory.is_archived == False).group_by(Memory.instance_id).all()
         for instance, count in instance_counts:
             by_instance[instance] = count
 
         # Most accessed (top 5)
         most_accessed = db.query(Memory).filter(
-            Memory.is_archived == 0
+            Memory.is_archived == False
         ).order_by(Memory.access_count.desc()).limit(5).all()
 
         # Recently added (top 5)
         recent = db.query(Memory).filter(
-            Memory.is_archived == 0
+            Memory.is_archived == False
         ).order_by(Memory.created_at.desc()).limit(5).all()
 
         # Average importance
         avg_importance = db.query(func.avg(Memory.importance)).filter(
-            Memory.is_archived == 0
+            Memory.is_archived == False
         ).scalar()
 
         # Trimmed response: most_accessed and recently_added as compact ID + subject pairs
