@@ -3,7 +3,7 @@ Get memory by ID tool for Claude Memory Palace MCP server.
 """
 from typing import Any, List, Optional, Union
 
-from memory_palace.services import get_memory_by_id
+from memory_palace.services import get_memory_by_id, get_memories_by_ids
 
 
 def register_get_memory(mcp):
@@ -12,7 +12,8 @@ def register_get_memory(mcp):
     @mcp.tool()
     async def memory_get(
         memory_ids: Union[int, List[int]],
-        detail_level: str = "verbose"
+        detail_level: str = "verbose",
+        synthesize: bool = False
     ) -> dict[str, Any]:
         """
         Retrieve one or more memories by their IDs.
@@ -29,10 +30,13 @@ def register_get_memory(mcp):
         Args:
             memory_ids: Single memory ID (int) or list of memory IDs to retrieve
             detail_level: "summary" for condensed, "verbose" for full content (default: verbose)
+            synthesize: If True, use LLM to synthesize multiple memories into natural language summary.
+                       Skipped for single memory (pointless). Default: False (returns raw memory objects).
 
         Returns:
             For single ID: {"memory": dict} or {"error": str} if not found
-            For multiple IDs: {"memories": list[dict], "not_found": list[int]}
+            For multiple IDs (synthesize=False): {"memories": list[dict], "count": int, "not_found": list[int]}
+            For multiple IDs (synthesize=True): {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int]}
         """
         # Normalize to list
         if isinstance(memory_ids, int):
@@ -42,24 +46,13 @@ def register_get_memory(mcp):
             ids = memory_ids
             single_mode = False
 
-        memories = []
-        not_found = []
-
-        for mid in ids:
-            result = get_memory_by_id(mid, detail_level=detail_level)
-            if result:
-                memories.append(result)
-            else:
-                not_found.append(mid)
-
-        # Return format depends on whether single or multiple IDs requested
+        # Single memory: use simple fetch (synthesis doesn't apply)
         if single_mode:
-            if memories:
-                return {"memory": memories[0]}
+            result = get_memory_by_id(ids[0], detail_level=detail_level)
+            if result:
+                return {"memory": result}
             else:
                 return {"error": f"Memory {ids[0]} not found"}
-        else:
-            result = {"memories": memories, "count": len(memories)}
-            if not_found:
-                result["not_found"] = not_found
-            return result
+
+        # Multiple memories: use batch fetch with optional synthesis
+        return get_memories_by_ids(ids, detail_level=detail_level, synthesize=synthesize)

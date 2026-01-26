@@ -100,7 +100,7 @@ def remember(
 
 def _synthesize_memories_with_llm(
     memories: List[Any],
-    query: str,
+    query: Optional[str] = None,
     similarity_scores: Optional[Dict[int, float]] = None
 ) -> Optional[str]:
     """
@@ -108,7 +108,7 @@ def _synthesize_memories_with_llm(
 
     Args:
         memories: List of Memory objects to synthesize
-        query: The original search query for context
+        query: The original search query for context (optional - uses generic prompt if None)
         similarity_scores: Optional dict mapping memory.id -> similarity score (0.0-1.0)
 
     Returns:
@@ -120,7 +120,11 @@ def _synthesize_memories_with_llm(
         return None
 
     if not memories:
-        return "No memories found matching your query."
+        return "No memories found." if not query else "No memories found matching your query."
+
+    # Default query for direct ID fetches (no search context)
+    if not query:
+        query = "Summarize these memories"
 
     # Check if all scores are below confidence threshold
     # (only applies if we have scores - keyword fallback won't have them)
@@ -553,6 +557,64 @@ def get_memory_by_id(memory_id: int, detail_level: str = "verbose") -> Optional[
         db.commit()
 
         return memory.to_dict(detail_level=detail_level)
+    finally:
+        db.close()
+
+
+def get_memories_by_ids(
+    memory_ids: List[int],
+    detail_level: str = "verbose",
+    synthesize: bool = False
+) -> Dict[str, Any]:
+    """
+    Get multiple memories by ID, with optional LLM synthesis.
+
+    Args:
+        memory_ids: List of memory IDs to retrieve
+        detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=False)
+        synthesize: If True, use LLM to synthesize memories into natural language summary
+
+    Returns:
+        If synthesize=False: {"memories": list[dict], "count": int, "not_found": list[int]}
+        If synthesize=True: {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int]}
+    """
+    db = get_session()
+    try:
+        # Fetch all memories in one query
+        memories = db.query(Memory).filter(Memory.id.in_(memory_ids)).all()
+        
+        # Track which IDs were found
+        found_ids = {m.id for m in memories}
+        not_found = [mid for mid in memory_ids if mid not in found_ids]
+        
+        # Update access tracking for all found memories
+        for memory in memories:
+            memory.last_accessed_at = datetime.utcnow()
+            memory.access_count += 1
+        db.commit()
+
+        # Skip synthesis for single memory (pointless) or empty results
+        if synthesize and len(memories) > 1:
+            synthesis = _synthesize_memories_with_llm(memories)
+            if synthesis:
+                result = {
+                    "summary": synthesis,
+                    "count": len(memories),
+                    "memory_ids": [m.id for m in memories]
+                }
+                if not_found:
+                    result["not_found"] = not_found
+                return result
+            # Fall through to raw return if LLM unavailable
+
+        # Return raw memory dicts
+        result = {
+            "memories": [m.to_dict(detail_level=detail_level) for m in memories],
+            "count": len(memories)
+        }
+        if not_found:
+            result["not_found"] = not_found
+        return result
     finally:
         db.close()
 
