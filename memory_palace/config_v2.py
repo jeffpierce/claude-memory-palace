@@ -30,6 +30,16 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "embedding_model": None,  # Auto-detected from Ollama
     "embedding_dimension": 768,  # Default for nomic-embed-text
     "llm_model": None,  # Auto-detected from Ollama
+    # Synthesis configuration
+    "synthesis": {
+        "enabled": True,  # Set False to disable local LLM synthesis (AWS/GPU-free mode)
+        # When disabled, memory_recall always returns raw memories regardless of
+        # synthesize parameter. The calling agent handles synthesis via its own
+        # reasoning or sub-agents. Useful when:
+        # - No local GPU available (AWS deployment)
+        # - GPU is busy (gaming, ComfyUI, etc.)
+        # - You want Claude to do the reasoning instead of local Qwen
+    },
     # Instance configuration
     "instances": ["default"],
 }
@@ -272,6 +282,33 @@ def get_llm_model() -> Optional[str]:
 def get_instances() -> List[str]:
     """Get the list of configured instance IDs."""
     return load_config().get("instances", DEFAULT_CONFIG["instances"])
+
+
+def is_synthesis_enabled() -> bool:
+    """
+    Check if local LLM synthesis is enabled.
+    
+    When False, memory_recall should always return raw memories and let
+    the calling agent handle synthesis. Useful for:
+    - AWS deployment (no local GPU)
+    - GPU-busy scenarios (gaming, image generation)
+    - Preferring Claude's reasoning over local Qwen
+    
+    Returns:
+        True if local synthesis is enabled, False to always return raw
+    
+    Usage in recall():
+        from memory_palace.config_v2 import is_synthesis_enabled
+        
+        def recall(..., synthesize: bool = True):
+            # Override synthesize if config disables it
+            if not is_synthesis_enabled():
+                synthesize = False
+            ...
+    """
+    config = load_config()
+    synthesis_config = config.get("synthesis", {})
+    return synthesis_config.get("enabled", True)
 
 
 def ensure_data_dir() -> Path:
