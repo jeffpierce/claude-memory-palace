@@ -15,21 +15,35 @@ from .mark_handoff_read import register_mark_handoff_read
 from .reflect import register_reflect
 from .jsonl_to_toon import register_jsonl_to_toon
 from .get_memory import register_get_memory
+from .link import register_link
+from .unlink import register_unlink
+from .related import register_related
+from .supersede import register_supersede
+from .graph import register_graph
 
 
 def register_all_tools(mcp):
     """Register all Memory Palace tools with the MCP server."""
+    # Core memory operations
     register_remember(mcp)
     register_recall(mcp)
     register_forget(mcp)
     register_get_memory(mcp)
     register_memory_stats(mcp)
     register_backfill_embeddings(mcp)
+    # Handoff messaging
     register_send_handoff(mcp)
     register_get_handoffs(mcp)
     register_mark_handoff_read(mcp)
+    # Reflection/processing
     register_reflect(mcp)
     register_jsonl_to_toon(mcp)
+    # Knowledge graph
+    register_link(mcp)
+    register_unlink(mcp)
+    register_related(mcp)
+    register_supersede(mcp)
+    register_graph(mcp)
 
 
 __all__ = ["register_all_tools"]

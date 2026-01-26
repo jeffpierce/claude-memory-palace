@@ -22,6 +22,14 @@ from memory_palace.services.memory_service import (
     jsonl_to_toon_chunks,
     VALID_SOURCE_TYPES,
 )
+from memory_palace.services.graph_service import (
+    link_memories,
+    unlink_memories,
+    get_related_memories,
+    supersede_memory,
+    traverse_graph,
+    get_relationship_types,
+)
 from memory_palace.services.reflection_service import reflect
 
 __all__ = [
@@ -41,6 +49,13 @@ __all__ = [
     "update_memory",
     "jsonl_to_toon_chunks",
     "VALID_SOURCE_TYPES",
+    # Knowledge graph
+    "link_memories",
+    "unlink_memories",
+    "get_related_memories",
+    "supersede_memory",
+    "traverse_graph",
+    "get_relationship_types",
     # Reflection
     "reflect",
 ]
