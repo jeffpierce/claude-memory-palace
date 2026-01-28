@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claude-memory-palace"
+name = "memory-palace"
 version = "2.0.0-alpha.1"
-description = "Persistent memory system for Claude instances with semantic search and handoff messaging"
+description = "Persistent semantic memory for AI agents — any model, any provider, your hardware, your data"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-keywords = ["claude", "memory", "mcp", "semantic-search", "llm"]
+keywords = ["memory", "mcp", "semantic-search", "llm", "ai-agents", "knowledge-graph"]
 
 dependencies = [
     "sqlalchemy>=2.0",
@@ -41,9 +41,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jeffpierce/claude-memory-palace"
-Repository = "https://github.com/jeffpierce/claude-memory-palace"
-Issues = "https://github.com/jeffpierce/claude-memory-palace/issues"
+Homepage = "https://github.com/jeffpierce/memory-palace"
+Repository = "https://github.com/jeffpierce/memory-palace"
+Issues = "https://github.com/jeffpierce/memory-palace/issues"
 
 [project.scripts]
 memory-palace-mcp = "mcp_server.server:main"

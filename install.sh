@@ -3,7 +3,7 @@
 # Claude Memory Palace — Universal Installer
 # Supports: Linux, macOS, WSL (with optional Windows-side configuration)
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/yourusername/claude-memory-palace/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/yourusername/memory-palace/main/install.sh | bash
 #   or:  ./install.sh
 # ============================================================================
 
@@ -20,7 +20,7 @@ DIM='\033[2m'
 NC='\033[0m' # No Color
 
 # --- Constants ---
-REPO_URL="https://github.com/clawdbot/claude-memory-palace.git"
+REPO_URL="https://github.com/clawdbot/memory-palace.git"
 BRANCH="main"
 INSTALL_DIR="$HOME/memory-palace"
 EMBEDDING_MODEL="nomic-embed-text"
@@ -552,7 +552,7 @@ download_repo() {
             # Fallback: download tarball
             info "git not found — downloading archive..."
             mkdir -p "$INSTALL_DIR"
-            curl -fsSL "https://github.com/clawdbot/claude-memory-palace/archive/refs/heads/${BRANCH}.tar.gz" \
+            curl -fsSL "https://github.com/clawdbot/memory-palace/archive/refs/heads/${BRANCH}.tar.gz" \
                 | tar -xz --strip-components=1 -C "$INSTALL_DIR"
         fi
     fi

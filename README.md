@@ -65,8 +65,8 @@ The installer will:
 
 ```bash
 # Clone repository
-git clone https://github.com/jeffpierce/claude-memory-palace.git
-cd claude-memory-palace
+git clone https://github.com/jeffpierce/memory-palace.git
+cd memory-palace
 
 # Create virtual environment and install
 python -m venv venv
@@ -85,7 +85,7 @@ Then add to your MCP client's configuration:
     "memory-palace": {
       "command": "python",
       "args": ["-m", "mcp_server.server"],
-      "cwd": "/path/to/claude-memory-palace",
+      "cwd": "/path/to/memory-palace",
       "env": {
         "OLLAMA_HOST": "http://localhost:11434"
       }

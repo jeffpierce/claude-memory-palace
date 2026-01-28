@@ -15,8 +15,8 @@ A persistent memory system for any MCP-compatible AI, enabling semantic search a
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/jeffpierce/claude-memory-palace.git
-   cd claude-memory-palace
+   git clone https://github.com/jeffpierce/memory-palace.git
+   cd memory-palace
    ```
 
 2. **Create virtual environment:**
@@ -59,7 +59,7 @@ Add the following to your MCP client's configuration file:
     "memory-palace": {
       "command": "python",
       "args": ["-m", "mcp_server.server"],
-      "cwd": "/path/to/claude-memory-palace",
+      "cwd": "/path/to/memory-palace",
       "env": {
         "OLLAMA_HOST": "http://localhost:11434"
       }
@@ -211,7 +211,7 @@ The default models are chosen to be usable on CPU. If you're experiencing slow p
 ## Architecture
 
 ```
-claude-memory-palace/
+memory-palace/
 ├── mcp_server/
 │   ├── server.py          # MCP server entry point
 │   └── tools/             # Tool implementations

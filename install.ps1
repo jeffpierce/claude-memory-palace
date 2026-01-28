@@ -1,7 +1,7 @@
 # ============================================================================
 # Claude Memory Palace — Windows PowerShell Installer
 # 
-# Usage: irm https://raw.githubusercontent.com/yourusername/claude-memory-palace/main/install.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/yourusername/memory-palace/main/install.ps1 | iex
 #   or:  .\install.ps1
 # ============================================================================
 
@@ -9,7 +9,7 @@
 $ErrorActionPreference = "Stop"
 
 # --- Constants ---
-$REPO_URL = "https://github.com/clawdbot/claude-memory-palace.git"
+$REPO_URL = "https://github.com/clawdbot/memory-palace.git"
 $BRANCH = "main"
 $INSTALL_DIR = Join-Path $env:USERPROFILE "memory-palace"
 $EMBEDDING_MODEL = "nomic-embed-text"
@@ -311,14 +311,14 @@ function Download-Repo {
         } else {
             # Fallback: download zip
             Write-Info "git not found — downloading archive..."
-            $zipUrl = "https://github.com/clawdbot/claude-memory-palace/archive/refs/heads/${BRANCH}.zip"
+            $zipUrl = "https://github.com/clawdbot/memory-palace/archive/refs/heads/${BRANCH}.zip"
             $zipFile = Join-Path $env:TEMP "memory-palace.zip"
             
             Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile
             Expand-Archive -Path $zipFile -DestinationPath $env:TEMP -Force
             
             # Move extracted folder
-            $extracted = Join-Path $env:TEMP "claude-memory-palace-$BRANCH"
+            $extracted = Join-Path $env:TEMP "memory-palace-$BRANCH"
             if (Test-Path $INSTALL_DIR) { Remove-Item $INSTALL_DIR -Recurse -Force }
             Move-Item $extracted $INSTALL_DIR
             Remove-Item $zipFile -ErrorAction SilentlyContinue
