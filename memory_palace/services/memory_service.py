@@ -13,7 +13,7 @@ from memory_palace.models import Memory, MemoryEdge
 from memory_palace.database import get_session
 from memory_palace.embeddings import get_embedding, cosine_similarity
 from memory_palace.config_v2 import get_auto_link_config
-from memory_palace.llm import classify_edge_type
+from memory_palace.llm import classify_edge_type, classify_edge_types_batch
 
 
 # Valid source types for memories
@@ -136,7 +136,13 @@ def remember(
             memory.embedding = embedding
             db.commit()
         else:
-            embedding_status = "failed (Ollama unavailable or error)"
+            embedding_status = "failed"
+            # Tag the memory so it's easy to find un-embedded memories
+            if memory.tags is None:
+                memory.tags = []
+            if "embedding_failed" not in memory.tags:
+                memory.tags = list(memory.tags) + ["embedding_failed"]
+                db.commit()
 
         # Track created links
         links_created = []
@@ -212,20 +218,31 @@ def remember(
                 ).all()
                 target_subjects = {t.id: t.subject for t in targets}
 
-            # Auto-link: create edges for high-confidence matches
-            for target_id, score in auto_tier:
-                # Don't duplicate the supersedes link
-                if target_id == supersedes_id:
-                    continue
+            # Filter auto_tier targets (exclude supersedes duplicates)
+            auto_targets = [
+                (tid, score) for tid, score in auto_tier
+                if tid != supersedes_id
+            ]
 
-                # Classify edge type using small LLM, or default to relates_to
-                if should_classify and target_id in target_subjects:
-                    edge_type = classify_edge_type(
-                        subject_a=memory.subject,
-                        subject_b=target_subjects[target_id],
+            # Batch-classify all auto-link edge types in ONE LLM call
+            # This replaces N sequential calls with 1 call that has full
+            # cross-pair context for more coherent classifications.
+            edge_type_map: dict = {}
+            if should_classify and auto_targets:
+                classify_pairs = [
+                    (tid, target_subjects.get(tid, "(no subject)"))
+                    for tid, _ in auto_targets
+                    if tid in target_subjects
+                ]
+                if classify_pairs:
+                    edge_type_map = classify_edge_types_batch(
+                        new_subject=memory.subject or "(no subject)",
+                        targets=classify_pairs,
                     )
-                else:
-                    edge_type = "relates_to"
+
+            # Create edges using batch classification results
+            for target_id, score in auto_targets:
+                edge_type = edge_type_map.get(target_id, "relates_to")
 
                 # Bidirectional only for symmetric relationships
                 is_bidirectional = edge_type in ("relates_to", "contradicts")
@@ -239,7 +256,7 @@ def remember(
                     edge_metadata={
                         "auto_linked": True,
                         "method": "embedding_similarity",
-                        "classified": should_classify,
+                        "classified": should_classify and target_id in edge_type_map,
                     },
                     created_by=instance_id
                 )
@@ -265,11 +282,20 @@ def remember(
                 db.commit()
 
         # Build response
+        embedded = embedding_status == "generated"
         result = {
             "id": memory.id,
             "subject": subject,
-            "embedded": embedding_status == "generated"
+            "embedded": embedded,
         }
+
+        # Surface embedding failures prominently so callers can't miss them
+        if not embedded:
+            result["warning"] = (
+                "EMBEDDING FAILED: Memory stored but NOT semantically searchable. "
+                "It will not appear in memory_recall results until embedding is backfilled. "
+                "Tagged with 'embedding_failed' for easy discovery."
+            )
         
         if links_created:
             result["links_created"] = links_created
@@ -340,26 +366,27 @@ def _synthesize_memories_with_llm(
 
     memories_block = "\n\n---\n\n".join(memory_texts)
 
-    # System prompt: comprehensive report, not brief summary
-    system = """You are a memory analyst synthesizing retrieved memories into a comprehensive report.
+    # System prompt: focused extraction for small models
+    system = """You are a memory recall assistant. Your job is to answer the query using ONLY the information in the provided memories.
 
-YOUR TASK:
-- Write a THOROUGH report that captures all relevant information from the memories
-- Include specific details, dates, names, and context - don't summarize away the details
-- Organize information logically by topic or chronology as appropriate
-- Note any contradictions, gaps, or uncertainties in the data
-- Cross-reference related memories when they connect
+RULES:
+- Answer the query directly using facts from the memories
+- Include specific details (dates, names, numbers) when present
+- If multiple memories are relevant, combine their information
+- If memories don't answer the query well, say so briefly
+- ONLY report what the memories contain - do NOT add information, speculation, or analysis beyond what's stored
+- Do NOT invent details, fill gaps with assumptions, or extrapolate beyond the data
+- Do NOT add recommendations, next steps, or research agendas
 
-RELEVANCE EVALUATION:
-- Assess how well these memories actually answer the query
-- High similarity scores (> 0.7) indicate strong relevance
-- Low scores (< 0.5) suggest tangential matches - acknowledge this
-- It's okay to note "these memories are related but don't directly answer X"
+RELEVANCE:
+- Focus on memories with similarity scores > 0.6
+- Ignore low-relevance memories (< 0.5) unless they contain directly useful info
+- Don't waste space explaining why irrelevant memories are irrelevant
 
 FORMAT:
-- Use clear paragraphs and sections as needed
-- You may use headers, bullet points, or prose - whatever serves clarity
-- Don't artificially compress - if there's a lot of relevant info, write a lot"""
+- Be concise. A few paragraphs is usually enough.
+- Use bullet points for lists of facts
+- Skip headers unless the answer genuinely covers multiple distinct topics"""
 
     # Add warning to prompt if all scores are low confidence
     confidence_note = ""
@@ -372,7 +399,7 @@ Found {len(memories)} memories to analyze:{confidence_note}
 
 {memories_block}
 
-Write a comprehensive report synthesizing these memories in response to the query:"""
+Answer the query using these memories. Be direct and factual:"""
 
     return generate_with_llm(prompt, system=system)
 
@@ -709,6 +736,9 @@ def backfill_embeddings() -> Dict[str, Any]:
 
             if embedding:
                 memory.embedding = embedding
+                # Clear the embedding_failed tag if present
+                if memory.tags and "embedding_failed" in memory.tags:
+                    memory.tags = [t for t in memory.tags if t != "embedding_failed"]
                 generated += 1
             else:
                 failed += 1

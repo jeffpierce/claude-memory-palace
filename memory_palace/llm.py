@@ -6,7 +6,7 @@ Uses aggressive VRAM management (keep_alive: 0) to allow model swapping.
 """
 
 import requests
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from .config import (
     get_ollama_url,
@@ -122,7 +122,8 @@ def generate_with_llm(
             "think": True,  # Enable Qwen3 thinking/reasoning mode
             "keep_alive": "0",  # Unload model immediately - aggressive VRAM strategy
             "options": {
-                "num_ctx": 65536,   # 64K context window - full Qwen capacity
+                "num_ctx": 8192,    # 8K context - plenty for memory synthesis
+                "num_predict": 2048,  # Focused output, not dissertations
                 "flash_attn": True  # Flash attention - ~2x KV cache efficiency
             }
         }
@@ -211,6 +212,34 @@ Memory A: "{subject_a}"
 Memory B: "{subject_b}"
 
 Relationship type:"""
+
+
+BATCH_CLASSIFICATION_PROMPT = """You are classifying relationships in a knowledge graph. A NEW memory has been added, and it is similar to several EXISTING memories. For each pair, reason about the relationship and classify it.
+
+IMPORTANT: You must NEVER return "supersedes". Only a human can decide that one memory supersedes another. If two memories conflict, use "contradicts" — the user will decide how to resolve it.
+
+Relationship types:
+- relates_to: General topical similarity, no direct logical dependency between the two
+- derived_from: The NEW memory was built from, implements, or extends the EXISTING memory
+- contradicts: The NEW and EXISTING memories make conflicting or incompatible claims about the same thing. This includes cases where one appears to update, replace, or override the other — always use contradicts, never supersedes.
+- exemplifies: One memory describes a specific real-world event or instance that illustrates the abstract concept in the other. One is a rule; the other is a case where the rule applied.
+- refines: The NEW memory is an updated, more precise version of the SAME statement in the EXISTING memory. Both say the same thing, but one adds exact numbers, names, or details that the other left vague.
+
+NEW MEMORY: "{new_subject}"
+
+EXISTING MEMORIES:
+{existing_list}
+
+For EACH existing memory, reason about the relationship, then output your classification.
+Use this EXACT format for each (one per line, pipe-delimited):
+ID|TYPE
+
+Example output:
+42|relates_to
+17|derived_from
+93|contradicts
+
+Output your classifications now:"""
 
 
 # Module-level cache for detected classification model
@@ -353,3 +382,160 @@ def classify_edge_type(
     except (requests.exceptions.RequestException, KeyError, ValueError) as e:
         print(f"Edge classification failed: {e}")
         return "relates_to"  # Graceful fallback
+
+
+def classify_edge_types_batch(
+    new_subject: str,
+    targets: List[Tuple[int, str]],
+    model: Optional[str] = None,
+    batch_size: int = 40,
+) -> Dict[int, str]:
+    """
+    Classify relationships between a new memory and multiple existing memories
+    in a single LLM call (or chunked calls for very large batches).
+
+    This is dramatically faster than N individual classify_edge_type() calls
+    because it requires only one model load and one inference pass per batch,
+    and gives the model cross-pair context for more coherent classifications.
+
+    Args:
+        new_subject: Subject of the newly created memory
+        targets: List of (memory_id, subject) tuples for existing memories
+        model: Model override (uses auto-detected classification model if None)
+        batch_size: Max pairs per LLM call (bounded by context window)
+
+    Returns:
+        Dict mapping memory_id -> edge_type for each target.
+        Any target not successfully classified defaults to "relates_to".
+    """
+    if not targets:
+        return {}
+
+    if model is None:
+        model = _detect_classification_model()
+
+    if model is None:
+        # No model available — default all to relates_to
+        return {tid: "relates_to" for tid, _ in targets}
+
+    results: Dict[int, str] = {}
+
+    # Chunk into batches that fit comfortably in context
+    for i in range(0, len(targets), batch_size):
+        chunk = targets[i:i + batch_size]
+        chunk_results = _classify_batch_chunk(new_subject, chunk, model)
+        results.update(chunk_results)
+
+    # Fill any missing targets with default
+    for tid, _ in targets:
+        if tid not in results:
+            results[tid] = "relates_to"
+
+    return results
+
+
+def _classify_batch_chunk(
+    new_subject: str,
+    targets: List[Tuple[int, str]],
+    model: str,
+) -> Dict[int, str]:
+    """
+    Classify a single batch chunk of relationships via one LLM call.
+
+    Args:
+        new_subject: Subject of the new memory
+        targets: List of (memory_id, subject) tuples (already chunked)
+        model: Model to use
+
+    Returns:
+        Dict mapping memory_id -> edge_type for successfully parsed pairs
+    """
+    ollama_url = get_ollama_url()
+
+    # Build the existing memories list
+    existing_lines = []
+    for tid, subject in targets:
+        existing_lines.append(f"  [{tid}] {subject}")
+    existing_list = "\n".join(existing_lines)
+
+    prompt = BATCH_CLASSIFICATION_PROMPT.format(
+        new_subject=new_subject,
+        existing_list=existing_list,
+    )
+
+    # Scale num_predict with pair count: reasoning + output per pair
+    # ~50 tokens per pair for reasoning, ~10 for output line
+    num_predict = max(500, len(targets) * 60)
+
+    try:
+        response = requests.post(
+            f"{ollama_url}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "think": True,  # Enable reasoning — classification needs thought
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": num_predict,
+                    "keep_alive": "0",
+                },
+            },
+            timeout=90,  # Generous timeout — one call replaces N sequential calls
+        )
+        response.raise_for_status()
+        data = response.json()
+        # With think:true, reasoning is in "thinking", answer is in "response"
+        raw = data.get("response", "")
+        return _parse_batch_classifications(raw, targets)
+
+    except (requests.exceptions.RequestException, KeyError, ValueError) as e:
+        print(f"Batch edge classification failed: {e}")
+        return {}  # Caller fills defaults
+
+
+def _parse_batch_classifications(
+    raw: str,
+    targets: List[Tuple[int, str]],
+) -> Dict[int, str]:
+    """
+    Parse batch classification output in ID|TYPE format.
+
+    Handles messy LLM output: extra whitespace, reasoning text mixed in,
+    missing pipes, etc. Extracts valid ID|TYPE lines and ignores the rest.
+
+    Args:
+        raw: Raw LLM output
+        targets: Original targets (for ID validation)
+
+    Returns:
+        Dict mapping memory_id -> normalized edge_type for parsed lines
+    """
+    valid_ids = {tid for tid, _ in targets}
+    results: Dict[int, str] = {}
+
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+
+        parts = line.split("|", 1)
+        if len(parts) != 2:
+            continue
+
+        # Extract ID — handle brackets, whitespace, etc.
+        id_str = parts[0].strip().strip("[]#")
+        type_str = parts[1].strip()
+
+        try:
+            tid = int(id_str)
+        except ValueError:
+            continue
+
+        if tid not in valid_ids:
+            continue
+
+        edge_type = _normalize_edge_type(type_str)
+        results[tid] = edge_type
+
+    return results

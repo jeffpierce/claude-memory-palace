@@ -6,6 +6,8 @@ Real-world scenarios where Memory Palace solves problems that bigger context win
 
 ## Personal: Cross-Session AI Memory
 
+**Status:** ✅ Shipping
+
 **Problem:** You've been working with Claude on a project for weeks. Every new session, you re-explain your architecture, your preferences, your decisions. Context windows don't carry over.
 
 **Solution:** Memory Palace stores decisions, architecture notes, and preferences as persistent memories. Start a new session, recall what you need, and pick up where you left off.
@@ -21,6 +23,8 @@ Session 47: "What database did we pick for the user service and why?"
 ---
 
 ## Personal: Model Migration
+
+**Status:** ✅ Shipping
 
 **Problem:** You've built up months of context in ChatGPT's memory. Now Claude Opus ships and you want to switch. Your options: start over, or manually recreate everything.
 
@@ -38,6 +42,8 @@ Your institutional knowledge is never held hostage by a subscription.
 ---
 
 ## Developer: Multi-Tool Workflow
+
+**Status:** ✅ Shipping
 
 **Problem:** You use a desktop AI for planning, a CLI coding agent for implementation, and a web-based AI for documentation. Each tool is a separate context silo.
 
@@ -58,6 +64,8 @@ Web AI:        memory_recall("authentication architecture")
 
 ## Developer: Codebase Onboarding
 
+**Status:** ✅ Shipping (with caveats — see Known Limitations)
+
 **Problem:** A new team member (or a new AI session) needs to understand a large codebase. Reading everything into context is expensive and hits limits.
 
 **Solution:** Store architectural decisions, gotchas, and tribal knowledge in Memory Palace. New sessions recall what they need on demand instead of ingesting everything upfront.
@@ -72,9 +80,13 @@ Any future session: memory_recall("how does payment event publishing work")
 → Gets the pattern, the reason, and the incident that proved why it matters.
 ```
 
+**Known Limitation:** The default embedding model (nomic-embed-text) has an 8192 token context window. Files exceeding this are truncated before embedding, which can lose information from long files. Mitigation: chunk large files or use summary-based ingestion for oversized sources.
+
 ---
 
 ## Team: Shared Knowledge Base
+
+**Status:** 🔧 Code complete, needs production validation
 
 **Problem:** Your team of 5 developers each uses AI assistants. Knowledge is scattered across individual conversations. When Alice figures out why the deploy pipeline fails on ARM, Bob's AI doesn't know.
 
@@ -89,9 +101,13 @@ Bob's AI:    memory_recall("ARM deployment issues")
              → Gets Alice's fix immediately, no Slack thread archaeology required.
 ```
 
+**Current state:** PostgreSQL + pgvector backend code exists and handles concurrent connections via SQLAlchemy's QueuePool. Not yet validated with multiple concurrent users in production.
+
 ---
 
 ## Agent Swarm: Research Pipeline
+
+**Status:** ✅ Architecture works, demonstrated in practice
 
 **Problem:** You want to research a topic using multiple AI agents — one for web search, one for analysis, one for synthesis. Traditional approach: a controller agent manages all three, its context fills up, it becomes the bottleneck.
 
@@ -129,6 +145,8 @@ No single agent holds everything in context. The memory store IS the shared stat
 
 ## Agent Swarm: Code Review Pipeline
 
+**Status:** 📋 Architecture defined, not yet implemented
+
 **Problem:** You want automated code review across a large PR — security analysis, performance review, style checking, and a final summary. One model can't hold the full diff in context.
 
 **Solution:** Specialized agents review different aspects, all writing findings to shared memory.
@@ -158,6 +176,8 @@ Cost-effective: expensive models only where they add value. Fast local models ha
 
 ## Agent Swarm: Continuous Monitoring
 
+**Status:** 📋 Architecture defined, not yet implemented
+
 **Problem:** You want AI agents monitoring multiple data sources — logs, metrics, social media, news — and alerting when patterns emerge across sources.
 
 **Solution:** Each monitor agent writes observations to Memory Palace. A pattern-detection agent periodically recalls recent observations and looks for cross-source correlations.
@@ -185,6 +205,8 @@ Agent: Pattern Detector (runs every 15 min)
 
 ## Developer: Codebase Knowledge Graph
 
+**Status:** ✅ Shipping (with caveats)
+
 **Problem:** Your AI coding assistant needs to understand how your codebase fits together — which services depend on which, what decisions shaped the architecture, what incidents informed current patterns. Ingesting the entire codebase into a context window is expensive, slow, and hits token limits.
 
 **Solution:** Store architectural relationships in Memory Palace's knowledge graph. When an agent needs context about a component, it traverses the graph at depth 2–3 and gets exactly the relevant connected knowledge.
@@ -207,11 +229,16 @@ memory_graph(start_id=PaymentService, max_depth=2)
   and the policy — exactly what's needed, nothing extra.
 ```
 
-No 500-file context ingestion. No token limit issues. The graph gives you precisely the connected context for any starting point.
+**Known limitations:**
+- Embedding model (nomic-embed-text) truncates files >8192 tokens
+- Graph traversal from hub nodes (identity/foundational memories) can return megabytes at depth 2+
+- Need traversal strategies and result limits for large graphs (not yet implemented)
 
 ---
 
 ## Enterprise: Sovereign AI Memory
+
+**Status:** ✅ Core infrastructure works
 
 **Problem:** Your organization handles classified or regulated data. You need AI assistants with persistent memory, but no data can leave your network. Cloud AI memory features are a non-starter.
 
@@ -236,9 +263,11 @@ Compliance:
 
 ## Enterprise: Multi-Department Agent Fleet
 
+**Status:** 📋 Architecture defined, not yet implemented
+
 **Problem:** You have 1,500 AI agents across engineering, support, sales, and operations. Each department has different knowledge. Agents need shared context within their department and selective cross-department access.
 
-**Solution:** PostgreSQL with schema-based isolation. Each department gets its own schema. Cross-department queries use read-only views.
+**Planned Solution:** PostgreSQL with schema-based isolation. Each department gets its own schema. Cross-department queries use read-only views.
 
 ```
 PostgreSQL Schemas:
@@ -255,21 +284,26 @@ Agent Fleet:
   300 ops agents          → read/write operations.*, read shared.*
 ```
 
-PostgreSQL's MVCC handles concurrent access. pgvector indexes handle semantic search at scale. PgBouncer pools connections efficiently. LISTEN/NOTIFY pushes handoff messages in real-time.
-
-No central controller. No context bottleneck. Each agent has the institutional knowledge it needs.
+**What this needs (not yet built):**
+- Schema-based tenant isolation in the MCP server
+- PgBouncer or equivalent connection pooling for high concurrency
+- LISTEN/NOTIFY integration for real-time handoff delivery
+- Access control layer mapping agents to schemas
 
 ---
 
 ## Summary
 
-All tiers are built, tested, and shipping today.
-
 | Scale | Backend | Agents | Key Feature | Status |
 |-------|---------|--------|-------------|--------|
 | Personal | SQLite | 1–10 | Zero config, local file | ✅ Shipping |
-| Team | PostgreSQL | 10–100 | Shared knowledge, concurrent access | ✅ Shipping |
-| Department | PostgreSQL + replicas | 100–500 | Read scaling, department isolation | ✅ Shipping |
-| Enterprise | PostgreSQL cluster | 500–10,000+ | Full fleet coordination, compliance | ✅ Shipping |
+| Team | PostgreSQL | 10–100 | Shared knowledge, concurrent access | 🔧 Code complete |
+| Department | PostgreSQL + replicas | 100–500 | Read scaling, department isolation | 📋 Planned |
+| Enterprise | PostgreSQL cluster | 500–10,000+ | Full fleet coordination, compliance | 📋 Planned |
 
-The MCP API is identical at every scale. The only thing that changes is a one-line config swap.
+**Legend:**
+- ✅ Shipping — Built, tested, in daily use
+- 🔧 Code complete — Implementation exists, needs production validation
+- 📋 Planned — Architecture defined, implementation not started
+
+The MCP API is identical at every scale. The only thing that changes is infrastructure — when that infrastructure gets built.

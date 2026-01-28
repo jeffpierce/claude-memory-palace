@@ -77,6 +77,8 @@ Your memories, your conversations, your context — it's in a SQLite file on YOU
 
 ## The Knowledge Graph: Connected Memory
 
+**Status:** ✅ Shipping
+
 Semantic search finds memories by meaning. But memories don't exist in isolation — they relate to each other. A decision connects to the architecture it shaped, which connects to the incident that informed it, which connects to the policy that prevents recurrence.
 
 Memory Palace includes a built-in knowledge graph with typed, directional, weighted edges:
@@ -121,19 +123,26 @@ memory_graph(start_id=PaymentService, max_depth=2)
 
 The AI doesn't need to ingest 500 files. It traverses the graph, pulling only what's connected to the question being asked. Small context windows become a non-issue when you have a map of how everything relates.
 
+**Known limitations:**
+- Traversing from hub nodes (identity/foundational memories) at depth 2+ can return megabytes
+- Needs result limits and degree-aware traversal strategies (not yet implemented)
+- Embedding model truncates files >8192 tokens
+
 ### Graph Tools
 
-| Tool | Description |
-|------|-------------|
-| `memory_link` | Create a typed, weighted, optionally bidirectional edge between two memories |
-| `memory_unlink` | Remove edges between memories |
-| `memory_related` | Get immediate connections (1 hop) from a memory |
-| `memory_graph` | Breadth-first traversal to configurable depth |
-| `memory_relationship_types` | List standard relationship types (`relates_to`, `refines`, `supersedes`, `exemplifies`, `caused_by`, etc.) |
+| Tool | Description | Status |
+|------|-------------|--------|
+| `memory_link` | Create a typed, weighted, optionally bidirectional edge between two memories | ✅ Shipping |
+| `memory_unlink` | Remove edges between memories | ✅ Shipping |
+| `memory_related` | Get immediate connections (1 hop) from a memory | ✅ Shipping |
+| `memory_graph` | Breadth-first traversal to configurable depth | ✅ Shipping |
+| `memory_relationship_types` | List standard relationship types | ✅ Shipping |
 
 Edges include metadata explaining *why* the connection exists, strength weights for traversal filtering, and directional semantics for accurate graph queries.
 
 ## The Handoff System: Decentralized Agent Coordination
+
+**Status:** ✅ Shipping (polling-based)
 
 ### The Old Way: Hub-and-Spoke
 
@@ -186,38 +195,44 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
 
 Each worker can be a *different model*. Cheap local model for routine tasks, Claude for complex reasoning, specialized fine-tuned model for domain work — all sharing the same memory, all passing messages through the same bus. No single model needs to hold the whole picture.
 
-## Backends: Both Ship Today
+**Current implementation:** Agents poll for handoffs via `handoff_get`. Push notifications via LISTEN/NOTIFY are planned but not yet implemented.
 
-Memory Palace includes two production backends. Both are built, tested, and deployed. Choose based on your use case:
+## Backends
+
+Memory Palace currently ships with two backends:
 
 ```
 SQLite (personal)     PostgreSQL (team/enterprise)
   Zero config            Concurrent access
   Single file            pgvector search
-  No dependencies        Scales to thousands
+  No dependencies        Scales with infra
        └──── Same MCP API ────┘
 ```
 
 | Tier | Backend | Concurrent Agents | Use Case | Status |
 |------|---------|-------------------|----------|--------|
 | Personal | SQLite | 1–10 | Individual developer, local AI instances | ✅ Shipping |
-| Team | PostgreSQL + pgvector | 10–100 | Dev team sharing AI memory | ✅ Shipping |
-| Department | PostgreSQL + read replicas | 100–500 | Cross-team knowledge sharing | ✅ Shipping |
-| Enterprise | PostgreSQL cluster | 500–10,000+ | Full agent swarm orchestration | ✅ Shipping |
+| Team | PostgreSQL + pgvector | 10–100 | Dev team sharing AI memory | 🔧 Code complete |
+| Department | PostgreSQL + read replicas | 100–500 | Cross-team knowledge sharing | 📋 Planned |
+| Enterprise | PostgreSQL cluster | 500–10,000+ | Full agent swarm orchestration | 📋 Planned |
+
+**Legend:**
+- ✅ Shipping — Built, tested, in daily use
+- 🔧 Code complete — Implementation exists, needs production validation  
+- 📋 Planned — Architecture defined, implementation not started
 
 SQLite is the default for zero-config setup — no database server needed, just a file. PostgreSQL is a config change away, no code changes required.
 
 ### Why PostgreSQL for Scale
 
-SQLite is perfect for single-user local use. It's fast, zero-config, and file-based. But SQLite has a write lock — one writer at a time. That's fine for one person. It's not fine for 1,500 concurrent agents.
+SQLite is perfect for single-user local use. It's fast, zero-config, and file-based. But SQLite has a write lock — one writer at a time. That's fine for one person. It's not fine for 100+ concurrent agents.
 
 PostgreSQL with pgvector provides:
 
 - **MVCC (Multi-Version Concurrency Control)** — Every agent reads and writes without blocking others
 - **pgvector** — Native vector similarity search with indexing at database scale
-- **Connection pooling** — PgBouncer maps thousands of agent connections to a manageable pool
-- **LISTEN/NOTIFY** — Agents can receive push notifications for handoffs instead of polling
-- **Replication** — Read replicas for recall-heavy workloads (most agents read more than write)
+- **Connection pooling** — SQLAlchemy's QueuePool handles connection reuse (external pooling like PgBouncer would help at higher scale)
+- **Replication** — Read replicas for recall-heavy workloads (architecture defined, not yet implemented)
 
 Switching from SQLite to PostgreSQL is a one-line config change:
 
@@ -231,6 +246,15 @@ Switching from SQLite to PostgreSQL is a one-line config change:
 ```
 
 No client changes. No data migration tool needed. The MCP API is identical.
+
+### Roadmap: Enterprise Features
+
+The following are architected but **not yet implemented**:
+
+- **Schema-based tenant isolation** — Each department gets its own PostgreSQL schema for data isolation
+- **PgBouncer integration** — External connection pooling for thousands of concurrent agents
+- **LISTEN/NOTIFY** — Push-based handoff delivery instead of polling
+- **Read replicas** — Separate read scaling from write path
 
 ### Air-Gapped & Sovereign Deployment
 

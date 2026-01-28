@@ -3,9 +3,17 @@ Embedding operations for Claude Memory Palace.
 
 Provides functions for generating embeddings and computing similarity using Ollama.
 Uses aggressive VRAM management (keep_alive: 0) to allow model swapping.
+
+Reliability guarantees:
+- Retries with exponential backoff on transient failures (cold model load, timeout)
+- Truncates oversized input to fit model context window rather than silently failing
+- Surfaces Ollama error responses explicitly instead of swallowing them
+- Logs all failures for diagnostics
 """
 
+import logging
 import math
+import time
 import requests
 from typing import List, Optional
 
@@ -14,6 +22,20 @@ from .config import (
     get_embedding_model,
     PREFERRED_EMBEDDING_MODELS,
 )
+
+logger = logging.getLogger(__name__)
+
+# nomic-embed-text has 8192 token context. Tokenization ratio varies:
+# - English prose: ~1.2-1.5 chars/token (~5500-6800 chars)
+# - Code/technical: ~1.0-1.2 chars/token (~6800-8192 chars)
+# - Worst case (single chars): 1 char = 1 token (8192 chars)
+# We use 6000 chars as a safe default that handles all content types
+# with margin for model overhead tokens (BOS, EOS, etc.).
+DEFAULT_MAX_EMBEDDING_CHARS = 6000
+
+# Retry configuration for transient failures (cold model load, etc.)
+EMBEDDING_MAX_RETRIES = 3
+EMBEDDING_RETRY_BASE_DELAY = 2.0  # seconds, doubles each retry
 
 
 # Module-level cache for detected embedding model
@@ -85,9 +107,43 @@ def get_active_embedding_model() -> Optional[str]:
     return _detect_embedding_model()
 
 
+def _truncate_for_embedding(text: str, max_chars: int = DEFAULT_MAX_EMBEDDING_CHARS) -> str:
+    """
+    Truncate text to fit within the embedding model's context window.
+
+    Preserves the beginning of the text (subject/type prefix) and truncates
+    the end, which is typically the body content. Adds a marker so we know
+    truncation happened.
+
+    Args:
+        text: Text to truncate
+        max_chars: Maximum character length
+
+    Returns:
+        Text truncated to fit, with marker if truncation occurred
+    """
+    if len(text) <= max_chars:
+        return text
+
+    # Reserve space for truncation marker
+    marker = "\n[TRUNCATED FOR EMBEDDING]"
+    truncated = text[:max_chars - len(marker)] + marker
+    logger.info(
+        "Truncated embedding text from %d to %d chars (limit: %d)",
+        len(text), len(truncated), max_chars
+    )
+    return truncated
+
+
 def get_embedding(text: str, model: Optional[str] = None) -> Optional[List[float]]:
     """
     Get embedding vector for text using Ollama.
+
+    Reliability features:
+    - Truncates oversized input to fit model context window
+    - Retries with exponential backoff on transient failures
+    - Checks Ollama error responses explicitly (not just HTTP status)
+    - Logs all failure modes for diagnostics
 
     Args:
         text: Text to embed
@@ -104,30 +160,113 @@ def get_embedding(text: str, model: Optional[str] = None) -> Optional[List[float
         model = get_active_embedding_model()
 
     if model is None:
-        # No model available
+        logger.warning("No embedding model available (Ollama not running or no model installed)")
         return None
+
+    # Truncate to fit model context window
+    text = _truncate_for_embedding(text)
 
     ollama_url = get_ollama_url()
+    last_error = None
 
-    try:
-        response = requests.post(
-            f"{ollama_url}/api/embeddings",
-            json={
-                "model": model,
-                "prompt": text,
-                "keep_alive": "0"  # Unload model immediately - aggressive VRAM strategy
-            },
-            timeout=30
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("embedding")
-    except requests.exceptions.RequestException:
-        # Ollama unavailable or error - fail gracefully
-        return None
-    except (KeyError, ValueError):
-        # Malformed response
-        return None
+    for attempt in range(EMBEDDING_MAX_RETRIES):
+        try:
+            # First attempt uses standard timeout; retries use longer timeout
+            # to account for cold model loading
+            timeout = 30 if attempt == 0 else 60
+
+            response = requests.post(
+                f"{ollama_url}/api/embeddings",
+                json={
+                    "model": model,
+                    "prompt": text,
+                    "keep_alive": "0"  # Unload model immediately - aggressive VRAM strategy
+                },
+                timeout=timeout
+            )
+
+            # Parse response body BEFORE raise_for_status — Ollama sometimes
+            # returns error details in the body of a 500 response
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+
+            # Check for Ollama-level errors (can come as 200 or 500 with error field)
+            if "error" in data:
+                error_msg = data["error"]
+                logger.error(
+                    "Ollama embedding error (attempt %d/%d): %s",
+                    attempt + 1, EMBEDDING_MAX_RETRIES, error_msg
+                )
+                # Context length errors won't be fixed by retry — this shouldn't
+                # happen anymore due to truncation, but handle it defensively
+                if "context length" in error_msg.lower():
+                    logger.error(
+                        "Input exceeds context length even after truncation "
+                        "(%d chars). This is a bug — please report it.",
+                        len(text)
+                    )
+                    return None
+                last_error = error_msg
+                # Other Ollama errors might be transient, retry
+                if attempt < EMBEDDING_MAX_RETRIES - 1:
+                    delay = EMBEDDING_RETRY_BASE_DELAY * (2 ** attempt)
+                    time.sleep(delay)
+                continue
+
+            embedding = data.get("embedding")
+            if embedding and len(embedding) > 0:
+                if attempt > 0:
+                    logger.info(
+                        "Embedding succeeded on attempt %d/%d",
+                        attempt + 1, EMBEDDING_MAX_RETRIES
+                    )
+                return embedding
+            else:
+                logger.warning(
+                    "Ollama returned empty embedding (attempt %d/%d). "
+                    "Response keys: %s",
+                    attempt + 1, EMBEDDING_MAX_RETRIES, list(data.keys())
+                )
+                last_error = "empty embedding returned"
+
+        except requests.exceptions.ConnectionError as e:
+            last_error = f"connection error: {e}"
+            logger.warning(
+                "Ollama connection failed (attempt %d/%d): %s",
+                attempt + 1, EMBEDDING_MAX_RETRIES, e
+            )
+        except requests.exceptions.Timeout:
+            last_error = "timeout"
+            logger.warning(
+                "Ollama embedding timed out (attempt %d/%d, timeout=%ds)",
+                attempt + 1, EMBEDDING_MAX_RETRIES, timeout
+            )
+        except requests.exceptions.RequestException as e:
+            last_error = str(e)
+            logger.warning(
+                "Ollama request failed (attempt %d/%d): %s",
+                attempt + 1, EMBEDDING_MAX_RETRIES, e
+            )
+        except (KeyError, ValueError) as e:
+            last_error = f"malformed response: {e}"
+            logger.warning(
+                "Malformed Ollama response (attempt %d/%d): %s",
+                attempt + 1, EMBEDDING_MAX_RETRIES, e
+            )
+
+        # Exponential backoff before retry
+        if attempt < EMBEDDING_MAX_RETRIES - 1:
+            delay = EMBEDDING_RETRY_BASE_DELAY * (2 ** attempt)
+            logger.info("Retrying embedding in %.1fs...", delay)
+            time.sleep(delay)
+
+    logger.error(
+        "Embedding failed after %d attempts. Last error: %s. Text length: %d chars",
+        EMBEDDING_MAX_RETRIES, last_error, len(text)
+    )
+    return None
 
 
 def cosine_similarity(a, b) -> float:
