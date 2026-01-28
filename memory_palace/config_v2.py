@@ -311,7 +311,7 @@ def is_synthesis_enabled() -> bool:
     the calling agent handle synthesis. Useful for:
     - AWS deployment (no local GPU)
     - GPU-busy scenarios (gaming, image generation)
-    - Preferring Claude's reasoning over local Qwen
+    - Preferring the calling model's reasoning over local synthesis
     
     Returns:
         True if local synthesis is enabled, False to always return raw

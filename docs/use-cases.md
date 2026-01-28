@@ -39,19 +39,19 @@ Your institutional knowledge is never held hostage by a subscription.
 
 ## Developer: Multi-Tool Workflow
 
-**Problem:** You use Claude Desktop for planning, Claude Code (CLI) for implementation, and a web-based AI for documentation. Each tool is a separate context silo.
+**Problem:** You use a desktop AI for planning, a CLI coding agent for implementation, and a web-based AI for documentation. Each tool is a separate context silo.
 
-**Solution:** All three connect to Memory Palace. Planning decisions made in Desktop are available to Code during implementation. Architecture insights from coding sessions are available when writing docs.
+**Solution:** All three connect to Memory Palace. Planning decisions made in the desktop tool are available to the coding agent during implementation. Architecture insights from coding sessions are available when writing docs.
 
 ```
-Claude Desktop:  "The API uses JWT auth with RS256 signing, 15-min expiry, 
-                  refresh tokens in HTTP-only cookies."
+Desktop AI:    "The API uses JWT auth with RS256 signing, 15-min expiry, 
+                refresh tokens in HTTP-only cookies."
 
-Claude Code:     memory_recall("API authentication approach")
-                 → Gets the full auth decision, implements accordingly
+CLI Agent:     memory_recall("API authentication approach")
+               → Gets the full auth decision, implements accordingly
 
-Web AI:          memory_recall("authentication architecture")
-                 → Gets both the decision AND implementation details for docs
+Web AI:        memory_recall("authentication architecture")
+               → Gets both the decision AND implementation details for docs
 ```
 
 ---
@@ -180,6 +180,34 @@ Agent: Pattern Detector (runs every 15 min)
   - Correlates: log errors + social complaints + metric spikes = likely incident
   - handoff_send to "incident-response" with correlated evidence
 ```
+
+---
+
+## Developer: Codebase Knowledge Graph
+
+**Problem:** Your AI coding assistant needs to understand how your codebase fits together — which services depend on which, what decisions shaped the architecture, what incidents informed current patterns. Ingesting the entire codebase into a context window is expensive, slow, and hits token limits.
+
+**Solution:** Store architectural relationships in Memory Palace's knowledge graph. When an agent needs context about a component, it traverses the graph at depth 2–3 and gets exactly the relevant connected knowledge.
+
+```
+# Store architectural knowledge
+memory_remember: "PaymentService uses the outbox pattern for event publishing"
+memory_remember: "EventBus consumes from the outbox relay"
+memory_remember: "Direct EventBus calls caused duplicate charges (INC-2847)"
+memory_remember: "Policy: Never call EventBus directly, always use outbox"
+
+# Link them
+memory_link(PaymentService → OutboxPattern, "uses")
+memory_link(OutboxPattern → EventBus, "publishes_to")  
+memory_link(DuplicateChargeIncident → DirectCallPolicy, "informed")
+
+# Later, any agent asks about payments:
+memory_graph(start_id=PaymentService, max_depth=2)
+→ Returns the service, its patterns, the event bus, the incident, 
+  and the policy — exactly what's needed, nothing extra.
+```
+
+No 500-file context ingestion. No token limit issues. The graph gives you precisely the connected context for any starting point.
 
 ---
 

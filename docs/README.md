@@ -1,6 +1,6 @@
-# Claude Memory Palace - Documentation
+# Memory Palace - Documentation
 
-A persistent memory system for Claude instances, enabling semantic search across conversations, facts, and insights.
+A persistent memory system for any MCP-compatible AI, enabling semantic search and knowledge graph traversal across conversations, facts, and insights.
 
 ## Quick Start
 
@@ -49,12 +49,9 @@ A persistent memory system for Claude instances, enabling semantic search across
    - Download default models (~1.3GB total)
    - Optionally recommend upgraded models if a GPU is detected
 
-### Configure Claude Desktop
+### Configure Your MCP Client
 
-Add the following to your Claude Desktop MCP configuration:
-
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+Add the following to your MCP client's configuration file:
 
 ```json
 {
@@ -62,7 +59,7 @@ Add the following to your Claude Desktop MCP configuration:
     "memory-palace": {
       "command": "python",
       "args": ["-m", "mcp_server.server"],
-      "cwd": "C:\\path\\to\\claude-memory-palace",
+      "cwd": "/path/to/claude-memory-palace",
       "env": {
         "OLLAMA_HOST": "http://localhost:11434"
       }
@@ -71,11 +68,19 @@ Add the following to your Claude Desktop MCP configuration:
 }
 ```
 
-Adjust paths for your system.
+**Config file locations by client:**
+
+| Client | Windows | macOS / Linux |
+|--------|---------|---------------|
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Cursor | Settings → MCP Servers | Settings → MCP Servers |
+| Claude Code | `~/.claude/claude_desktop_config.json` | `~/.claude/claude_desktop_config.json` |
+
+The installer scripts auto-detect installed clients and configure them automatically.
 
 ## Usage
 
-Once configured, Claude will have access to the following memory tools:
+Once configured, your AI will have access to the following memory tools:
 
 ### Core Tools
 

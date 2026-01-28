@@ -1,4 +1,4 @@
-# Claude Memory Palace
+# Memory Palace
 
 Persistent semantic memory for AI — any model, any provider, your hardware, your data.
 
@@ -9,11 +9,12 @@ Every AI session starts as a blank slate. Context windows are finite. Sessions e
 Memory Palace fixes this by separating memory from the model:
 
 - **Cross-session** — AI remembers across conversations
-- **Cross-model** — Switch from Claude to GPT to local Qwen; same memories, zero migration
+- **Cross-model** — Switch from Claude to GPT to local Llama; same memories, zero migration
 - **Cross-provider** — Cancel any subscription, keep all your context
 - **No cloud dependency** — Runs entirely on your hardware with local models
 - **No vendor lock-in** — Open protocol (MCP), standard database (SQLite/PostgreSQL), your data
 - **Data sovereignty** — `SELECT * FROM memories` whenever you want
+- **Knowledge graph** — Memories aren't just searchable, they're connected. Traverse relationships between decisions, components, and concepts.
 - **Agent coordination** — Handoff system enables decentralized swarms without a controller bottleneck
 
 The context window is working memory. Memory Palace is long-term storage. That's how brains work.
@@ -23,12 +24,13 @@ The context window is working memory. Memory Palace is long-term storage. That's
 ## Features
 
 - **Semantic Search** — Find memories by meaning using local embedding models
+- **Knowledge Graph** — Typed relationships between memories with graph traversal (`memory_graph`, `memory_link`, `memory_related`)
 - **Memory Types** — Organize memories as facts, decisions, architecture, gotchas, solutions, and more
 - **Transcript Reflection** — Automatically extract memories from conversation logs
-- **Multi-Instance Support** — Share memories across Claude Desktop, CLI, web, and other AI tools
+- **Multi-Instance Support** — Share memories across any MCP-compatible AI tools
 - **Handoff Messages** — AI instances can send messages to each other through the memory store
 - **Local Processing** — All embeddings and extraction run locally via Ollama
-- **MCP Integration** — Works with any MCP-compatible AI client
+- **MCP Integration** — Works with any MCP-compatible client (Claude Desktop, Cursor, Windsurf, Claude Code, custom agents, etc.)
 
 ## Scaling
 
@@ -44,17 +46,62 @@ See [Architecture](docs/architecture.md) for the full scaling path and [Use Case
 
 ## Quick Start
 
+### Using Installers (Recommended)
+
+Platform-specific installers handle everything — Python, Ollama, models, and MCP client configuration:
+
+| Platform | Command |
+|----------|---------|
+| **macOS / Linux** | `./install.sh` |
+| **Windows (PowerShell)** | `.\install.ps1` |
+| **Windows (Command Prompt)** | `install.bat` |
+
+The installer will:
+1. Detect your hardware (GPU, VRAM)
+2. Install Ollama and download default models (~1.3GB)
+3. Auto-configure any detected MCP clients (Claude Desktop, Cursor, Windsurf, etc.)
+
+### Manual Install
+
 ```bash
 # Clone repository
 git clone https://github.com/jeffpierce/claude-memory-palace.git
 cd claude-memory-palace
 
-# Install
+# Create virtual environment and install
+python -m venv venv
+source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -e .
 
-# Run setup wizard (detects GPU, downloads models)
+# Run setup wizard
 python -m setup.first_run
 ```
+
+Then add to your MCP client's configuration:
+
+```json
+{
+  "mcpServers": {
+    "memory-palace": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"],
+      "cwd": "/path/to/claude-memory-palace",
+      "env": {
+        "OLLAMA_HOST": "http://localhost:11434"
+      }
+    }
+  }
+}
+```
+
+**Config file locations by client:**
+
+| Client | Windows | macOS / Linux |
+|--------|---------|---------------|
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Cursor | `%APPDATA%\Cursor\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json` | `~/.config/Cursor/...` |
+| Windsurf | `%APPDATA%\Windsurf\...` | `~/.config/Windsurf/...` |
+| Claude Code | `~/.claude/claude_desktop_config.json` | `~/.claude/claude_desktop_config.json` |
 
 ## Requirements
 
@@ -77,6 +124,8 @@ If you have a dedicated GPU and want better extraction quality, see the [Model U
 
 ## Tools
 
+### Core Memory
+
 | Tool | Description |
 |------|-------------|
 | `memory_remember` | Store a new memory |
@@ -86,6 +135,21 @@ If you have a dedicated GPU and want better extraction quality, see the [Model U
 | `memory_stats` | Memory system overview |
 | `memory_get` | Retrieve specific memories by ID |
 | `memory_backfill_embeddings` | Regenerate embeddings (e.g., after model change) |
+
+### Knowledge Graph
+
+| Tool | Description |
+|------|-------------|
+| `memory_link` | Create a typed relationship between two memories |
+| `memory_unlink` | Remove a relationship between memories |
+| `memory_related` | Get immediate connections (1 hop) from a memory |
+| `memory_graph` | Traverse the knowledge graph (breadth-first, configurable depth) |
+| `memory_relationship_types` | List available relationship types |
+
+### Instance Coordination
+
+| Tool | Description |
+|------|-------------|
 | `handoff_send` | Send message to another AI instance |
 | `handoff_get` | Check for messages from other instances |
 | `handoff_mark_read` | Mark a handoff message as read |
@@ -99,32 +163,11 @@ Once configured with any MCP-compatible client:
 ```
 "Remember that the database migration requires downtime"
 "What do we know about the API rate limits?"
+"How does the payment service connect to the event bus?"
 "Reflect on this conversation and save important decisions"
 ```
 
 ## Configuration
-
-### Claude Desktop
-
-Add to your MCP configuration:
-
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "memory-palace": {
-      "command": "python",
-      "args": ["-m", "mcp_server.server"],
-      "cwd": "/path/to/claude-memory-palace",
-      "env": {
-        "OLLAMA_HOST": "http://localhost:11434"
-      }
-    }
-  }
-}
-```
 
 ### Environment Variables
 
@@ -150,33 +193,21 @@ Add to your MCP configuration:
 }
 ```
 
-## Architecture
+For PostgreSQL, set the database config:
 
-```
-claude-memory-palace/
-├── mcp_server/              # MCP server (protocol layer)
-│   ├── server.py            # Server entry point
-│   └── tools/               # Tool implementations
-├── memory_palace/           # Core library
-│   ├── config.py            # Configuration
-│   ├── database.py          # SQLAlchemy database
-│   ├── models.py            # Data models
-│   ├── embeddings.py        # Ollama embedding client
-│   └── llm.py               # LLM integration
-├── setup/                   # Setup utilities
-│   └── first_run.py         # Setup wizard
-├── docs/
-│   ├── README.md            # Detailed installation & usage
-│   ├── architecture.md      # Architecture & vision
-│   ├── use-cases.md         # Real-world use case examples
-│   └── models.md            # Model selection guide
-└── installer/               # Platform-specific installers
+```json
+{
+  "database": {
+    "type": "postgres",
+    "url": "postgresql://user:pass@localhost/memory_palace"
+  }
+}
 ```
 
 ## Documentation
 
-- [Installation & Usage](docs/README.md) — Detailed setup guide
-- [Architecture & Vision](docs/architecture.md) — Why this exists and where it's going
+- [Installation & Usage](docs/README.md) — Detailed setup and troubleshooting
+- [Architecture & Vision](docs/architecture.md) — Why this exists, knowledge graph, scaling path
 - [Use Cases](docs/use-cases.md) — Personal, team, and enterprise examples
 - [Model Guide](docs/models.md) — Default models and optional GPU upgrades
 

@@ -51,3 +51,12 @@ installer/windows/build/
 
 # Claude Code temp files
 tmpclaude-*
+
+# Junk files
+nul
+C:*
+comfyui_nodes.json
+BEFORE_AFTER_EXAMPLES.md
+IMPLEMENTATION_SUMMARY.md
+venv-linux/
+.claude/

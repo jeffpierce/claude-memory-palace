@@ -1,11 +1,7 @@
 """
 SQLAlchemy models for Claude Memory Palace.
 
-Extracted from EFaaS SandyMemory and SandyMessage models.
-Key transformations:
-- SandyMemory -> Memory
-- SandyMessage -> HandoffMessage
-- created_by -> instance_id (configurable, not hardcoded)
+Defines Memory and HandoffMessage tables with instance-based ownership.
 """
 
 from datetime import datetime
