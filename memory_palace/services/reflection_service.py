@@ -4,7 +4,7 @@ Reflection service for Claude Memory Palace.
 Processes conversation transcripts and extracts memories worth keeping.
 Uses LLM for intelligent extraction with free-form memory types.
 
-Extracted from EFaaS sandy_reflect and _extract_memories_with_llm.
+Adapted from conversation reflection and memory extraction patterns.
 """
 
 from pathlib import Path

@@ -1,7 +1,7 @@
 """
 Database connection and session management for Claude Memory Palace.
 
-Extracted from EFaaS and adapted for standalone use.
+Database layer for Memory Palace.
 """
 
 from sqlalchemy import create_engine, event

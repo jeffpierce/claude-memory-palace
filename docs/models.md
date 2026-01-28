@@ -1,182 +1,115 @@
-# Model Selection Guide
+# Model Guide
 
-Claude Memory Palace uses two types of models:
-1. **Embedding Models** - Convert text to vectors for semantic search
-2. **LLM Models** - Extract memories from conversation transcripts
+Memory Palace uses two types of local models via [Ollama](https://ollama.ai):
 
-## Quick Reference
+1. **Embedding Model** — Converts text to vectors for semantic search
+2. **LLM Model** — Extracts memories from transcripts, synthesizes recall results
 
-| VRAM | Embedding Model | LLM Model | Notes |
-|------|-----------------|-----------|-------|
-| 4GB | nomic-embed-text | qwen2.5:3b | Tight fit, consider CPU |
-| 6GB | nomic-embed-text | qwen2.5:7b | Works with model swapping |
-| 8GB | snowflake-arctic-embed | qwen2.5:7b | Comfortable |
-| 10GB | snowflake-arctic-embed | qwen3:8b | Good headroom |
-| 12GB | snowflake-arctic-embed | qwen3:14b | Non-simultaneous use |
-| 16GB+ | sfr-embedding-mistral | qwen3:14b | Premium, one at a time |
-| 24GB+ | sfr-embedding-mistral | qwen3:14b | Can overlap carefully |
+## Defaults: Runs on Anything
 
-## Embedding Models
+The default models are chosen to work everywhere — laptops, old desktops, CPU-only machines, even a Raspberry Pi if you're patient:
 
-Embedding models convert text into high-dimensional vectors, enabling semantic similarity search (finding memories by meaning, not just keywords).
+| Component | Default Model | Download Size | RAM/VRAM | Purpose |
+|-----------|--------------|---------------|----------|---------|
+| Embedding | nomic-embed-text | ~300MB | ~300MB | Semantic vector search |
+| LLM | qwen3:1.7b | ~1GB | ~1.5GB | Synthesis, classification, extraction |
 
-### nomic-embed-text (Recommended for 4-6GB VRAM)
+**Total: ~1.3GB download.** No GPU required. These are installed automatically by the setup wizard.
 
-```bash
-ollama pull nomic-embed-text
-```
+The defaults are opinionated: they prioritize accessibility over maximum quality. Memory Palace should work for everyone, not just people with expensive GPUs. You can always upgrade later without losing any data.
 
-- **Size:** ~300MB
-- **Dimensions:** 768
-- **Context:** 8,192 tokens
-- **Quality:** Good for most use cases
-- **Speed:** Very fast
+## Upgrading Models (Optional)
 
-Best for systems with limited VRAM or when running alongside other applications.
+If you have a dedicated NVIDIA GPU and want better extraction quality, you can swap in larger models. The embedding model rarely needs upgrading — nomic-embed-text is excellent for its size. The LLM is where more VRAM pays off.
 
-### snowflake-arctic-embed-l (Recommended for 8-12GB VRAM)
+### LLM Upgrades
 
-```bash
-ollama pull snowflake-arctic-embed:335m
-```
+The LLM handles memory extraction from transcripts and synthesis of recall results. Bigger models catch more nuance and produce better summaries.
 
-- **Size:** ~1GB
-- **Dimensions:** 1024
-- **Context:** 512 tokens
-- **Quality:** Excellent retrieval performance
-- **Speed:** Fast
+| VRAM Available | Recommended LLM | Download | Improvement |
+|---------------|-----------------|----------|-------------|
+| Default (any) | qwen3:1.7b | ~1GB | Baseline — works everywhere |
+| 6GB+ | qwen3:4b | ~2.5GB | Better instruction following |
+| 8GB+ | qwen3:8b | ~5GB | Noticeably better reasoning |
+| 12GB+ | qwen3:14b | ~9GB | Best extraction quality |
 
-Good balance of quality and resource usage. Recommended for most users with dedicated GPU.
-
-### sfr-embedding-mistral (Premium - 16GB+ VRAM)
+To upgrade:
 
 ```bash
-ollama pull sfr-embedding-mistral:f16
-```
-
-- **Size:** ~14GB
-- **Dimensions:** 4096
-- **Context:** 32,768 tokens
-- **Quality:** MTEB #2, best available
-- **Speed:** Slower but worth it
-
-The gold standard for embedding quality. Use if you have the VRAM and want the best possible semantic search. The full-precision F16 version is recommended over quantized versions.
-
-## LLM Models
-
-LLM models are used by `sandy_reflect` to intelligently extract memories from conversation transcripts. They analyze conversations and identify facts, decisions, insights, and other memorable content.
-
-### qwen2.5:3b (Minimal - 4GB VRAM)
-
-```bash
-ollama pull qwen2.5:3b
-```
-
-- **Size:** ~2GB
-- **Context:** 32K tokens
-- **Quality:** Basic extraction capability
-- **Speed:** Fast
-
-Use only if VRAM is severely constrained. Extraction quality is noticeably lower.
-
-### qwen2.5:7b (Balanced - 6-8GB VRAM)
-
-```bash
-ollama pull qwen2.5:7b
-```
-
-- **Size:** ~4.5GB
-- **Context:** 32K tokens
-- **Quality:** Good extraction, reliable format following
-- **Speed:** Good
-
-Recommended for most users. Good balance of quality and resource usage.
-
-### qwen3:8b (Upgraded - 10GB VRAM)
-
-```bash
+# Pull the larger model
 ollama pull qwen3:8b
+
+# Set via environment variable
+export MEMORY_PALACE_LLM_MODEL=qwen3:8b
+
+# Or set in config file (~/.memory-palace/config.json)
+# "llm_model": "qwen3:8b"
 ```
 
-- **Size:** ~5GB
-- **Context:** 32K tokens
-- **Quality:** Better reasoning, improved extraction
-- **Speed:** Good
+### Embedding Upgrades
 
-Newer architecture with improved instruction following. Worth the upgrade if you have the VRAM.
+The embedding model affects semantic search quality — how well "what was our auth decision?" finds a memory about "JWT tokens with RS256 signing." nomic-embed-text is genuinely good here; upgrade only if you want the absolute best retrieval accuracy.
 
-### qwen3:14b (Premium - 12GB+ VRAM)
+| VRAM Available | Recommended Embedding | Download | Dimensions | Notes |
+|---------------|----------------------|----------|------------|-------|
+| Default (any) | nomic-embed-text | ~300MB | 768 | Great quality-to-size ratio |
+| 8GB+ | snowflake-arctic-embed:335m | ~1GB | 1024 | Better retrieval accuracy |
+| 16GB+ | sfr-embedding-mistral:f16 | ~14GB | 4096 | MTEB #2, best available |
+
+**⚠️ Changing embedding models requires re-embedding all existing memories.** Different models produce incompatible vectors. After switching, run:
 
 ```bash
-ollama pull qwen3:14b
+# Re-generate all embeddings with the new model
+# Use the memory_backfill_embeddings tool, or:
+export MEMORY_PALACE_EMBEDDING_MODEL=snowflake-arctic-embed:335m
+# Then call memory_backfill_embeddings via your MCP client
 ```
 
-- **Size:** ~9GB loaded (14GB on disk)
-- **Context:** 32K tokens
-- **Quality:** Best extraction quality
-- **Speed:** Slower but thorough
+### Combined VRAM Budget
 
-Best available extraction quality. Catches nuanced information and produces well-typed memories. Requires dedicated GPU with 12GB+ VRAM.
+Ollama loads one model at a time by default, swapping as needed. If you want to understand total VRAM requirements:
 
-## VRAM Management
+| Setup | Embedding | LLM | Peak VRAM | Notes |
+|-------|-----------|-----|-----------|-------|
+| Default | nomic-embed-text (300MB) | qwen3:1.7b (1.5GB) | ~1.5GB | Runs on anything |
+| Mid-range | nomic-embed-text (300MB) | qwen3:8b (5GB) | ~5GB | Best bang for buck |
+| High-end | snowflake-arctic (1GB) | qwen3:14b (9GB) | ~9GB | Serious quality uplift |
+| Premium | sfr-embedding-mistral (14GB) | qwen3:14b (9GB) | ~14GB | One model at a time |
 
-### Single Model at a Time
+Models swap automatically — you don't need VRAM for both simultaneously unless you're running very high-throughput workloads.
 
-On systems with limited VRAM (under 24GB), run only one model at a time:
-1. Load embedding model for storing/searching memories
-2. Unload embedding model (Ollama does this automatically)
-3. Load LLM for reflection
-4. Unload LLM when done
+## CPU Fallback
 
-Ollama handles model loading/unloading automatically based on usage.
+No GPU? No problem. All models run on CPU via Ollama. Performance differences:
 
-### Memory Headroom
+- **Embedding** — ~2-5x slower on CPU. Still fast enough for interactive use.
+- **LLM (1.7B)** — Responsive on modern CPUs. A few seconds per synthesis.
+- **LLM (8B+)** — Noticeably slower on CPU (~10-30x). Consider sticking with 1.7B if CPU-only.
 
-Always leave some VRAM headroom:
-- 14GB model on 16GB card = works but tight
-- 14GB model on 24GB card = comfortable
-- 9GB + 5GB models on 16GB = cannot run simultaneously
-
-### CPU Fallback
-
-If VRAM is insufficient, Ollama will use CPU. This is significantly slower:
-- Embedding: ~10x slower on CPU
-- LLM generation: ~20-50x slower on CPU
-
-Consider smaller models if you frequently hit VRAM limits.
+The default models were chosen specifically because they're usable on CPU. If you're CPU-only, the defaults are your best option.
 
 ## Changing Models
 
 To switch models after initial setup:
 
-1. **Pull new model:**
+1. **Pull the new model:**
    ```bash
-   ollama pull new-model-name
+   ollama pull model-name
    ```
 
-2. **Update environment variables:**
+2. **Update configuration** (choose one):
    ```bash
-   # Windows
-   set EMBED_MODEL=new-embed-model
-   set LLM_MODEL=new-llm-model
+   # Environment variable
+   export MEMORY_PALACE_LLM_MODEL=qwen3:8b
+   export MEMORY_PALACE_EMBEDDING_MODEL=snowflake-arctic-embed:335m
 
-   # macOS/Linux
-   export EMBED_MODEL=new-embed-model
-   export LLM_MODEL=new-llm-model
+   # Or config file (~/.memory-palace/config.json)
+   {
+     "llm_model": "qwen3:8b",
+     "embedding_model": "snowflake-arctic-embed:335m"
+   }
    ```
 
-3. **Re-embed existing memories (if changing embedding model):**
-   Use `backfill_embeddings` tool to regenerate embeddings with the new model.
+3. **If you changed the embedding model**, re-embed existing memories using the `memory_backfill_embeddings` tool.
 
-   Note: Different embedding models produce incompatible vectors. After switching, old embeddings won't match new queries properly until re-embedded.
-
-## Model Comparison Testing
-
-To test which models work best for your use case:
-
-1. Create test memories with known content
-2. Query using different phrasings
-3. Compare recall accuracy
-4. Balance quality against speed
-
-The premium models (sfr-embedding-mistral, qwen3:14b) consistently outperform smaller models, but smaller models may be sufficient for simpler use cases.
+Environment variables override config file values.

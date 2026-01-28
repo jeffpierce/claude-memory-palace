@@ -20,7 +20,7 @@ CONFIG_FILE_NAME = "config.json"
 DEFAULT_CONFIG: Dict[str, Any] = {
     # Database configuration
     "database": {
-        "type": "postgres",  # "postgres" or "sqlite"
+        "type": "sqlite",  # "sqlite" (default, zero-install) or "postgres" (upgrade path)
         "url": None,  # PostgreSQL connection URL, or None to use default SQLite path
         # Default: postgresql://localhost:5432/memory_palace (if type=postgres and url=None)
         # Default: sqlite:///~/.memory-palace/memories.db (if type=sqlite and url=None)
@@ -311,7 +311,7 @@ def is_synthesis_enabled() -> bool:
     the calling agent handle synthesis. Useful for:
     - AWS deployment (no local GPU)
     - GPU-busy scenarios (gaming, image generation)
-    - Preferring Claude's reasoning over local Qwen
+    - Preferring the calling model's reasoning over local synthesis
     
     Returns:
         True if local synthesis is enabled, False to always return raw

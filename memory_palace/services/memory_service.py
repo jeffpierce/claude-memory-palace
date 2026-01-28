@@ -2,13 +2,6 @@
 Memory service for Claude Memory Palace.
 
 Provides functions for storing, recalling, archiving, and managing memories.
-Extracted and adapted from EFaaS sandy_* memory functions.
-
-Key transformations from EFaaS:
-- SandyMemory -> Memory
-- from_instance/created_by -> instance_id
-- get_db_session -> get_session
-- Removed Sandy-specific references
 """
 
 from datetime import datetime

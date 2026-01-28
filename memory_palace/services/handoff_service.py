@@ -1,7 +1,6 @@
 """
 Handoff service for inter-instance communication.
 
-Extracted and adapted from EFaaS sandy_send_message, sandy_get_messages, sandy_mark_read.
 Provides note-passing between Claude instances (desktop, code, web, etc.).
 """
 
