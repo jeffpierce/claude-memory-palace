@@ -230,6 +230,12 @@ claude-memory-palace/
     └── models.md          # Model guide
 ```
 
+## Further Reading
+
+- [Architecture & Vision](architecture.md) — Why Memory Palace exists, what problems it solves, and the scaling path from personal SQLite to enterprise PostgreSQL clusters
+- [Use Cases](use-cases.md) — Real-world examples: personal memory, team knowledge sharing, agent swarm coordination, sovereign enterprise deployment
+- [Model Selection](models.md) — Choosing the right embedding and LLM models for your hardware
+
 ## Support
 
 For issues and feature requests, please open a GitHub issue.
