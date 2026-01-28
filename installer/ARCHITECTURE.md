@@ -86,25 +86,47 @@ If `memory-palace` already exists in config, ask before updating.
 ## File Structure
 
 ```
+install.sh                       # Universal shell installer (Linux/Mac/WSL)
+install.ps1                      # PowerShell installer (Windows)
 installer/
-├── ARCHITECTURE.md          # This file
-├── install.sh               # Universal shell installer (Linux/Mac/WSL)
-├── install.ps1              # PowerShell installer (Windows)
+├── ARCHITECTURE.md              # This file
+├── gui/
+│   ├── __init__.py
+│   └── app.py                   # Cross-platform tkinter GUI (all 6 screens)
 ├── shared/
 │   ├── __init__.py
-│   ├── detect.py            # Platform, GPU, Python, Ollama detection
-│   ├── clients.py           # AI client discovery and configuration
-│   ├── models.py            # Model selection and download
-│   ├── install_core.py      # Package installation (venv, pip)
-│   └── config_merge.py      # Safe config file merging with backup
+│   ├── detect.py                # Platform, GPU, Python, Ollama detection
+│   ├── clients.py               # AI client discovery and configuration
+│   ├── models.py                # Model selection and download
+│   └── install_core.py          # Package installation (venv, pip, clone)
 ├── windows/
-│   ├── setup_gui.py         # Windows tkinter GUI
-│   ├── bundled_setup_gui.py # PyInstaller entry point
-│   └── build_exe.py         # Build script
+│   ├── run_gui.py               # Thin launcher → gui/app.py
+│   └── build.py                 # PyInstaller → MemoryPalaceSetup.exe
 ├── macos/
-│   ├── setup_gui.py         # macOS tkinter GUI
-│   └── build_app.py         # py2app build script
+│   ├── run_gui.py               # Thin launcher → gui/app.py
+│   └── build.py                 # py2app → Memory Palace Setup.app + .dmg
 └── linux/
-    ├── setup_gui.py         # Linux tkinter GUI
-    └── build_appimage.py    # AppImage build script
+    ├── run_gui.py               # Thin launcher → gui/app.py (Steam Deck aware)
+    └── build.py                 # AppImage → MemoryPalaceSetup-x86_64.AppImage
 ```
+
+## Building
+
+```bash
+# Windows (run on Windows or cross-compile)
+cd installer/windows && python build.py
+
+# macOS (must run on macOS)
+cd installer/macos && python build.py
+
+# Linux AppImage (must run on Linux, WSL works)
+cd installer/linux && python build.py
+```
+
+## Build Requirements
+
+| Platform | Tool | Install |
+|----------|------|---------|
+| Windows | PyInstaller | `pip install pyinstaller` |
+| macOS | py2app | `pip install py2app` |
+| Linux | appimagetool | Auto-downloaded by build.py |
