@@ -5,6 +5,14 @@
 Zero-friction installation of Claude Memory Palace for non-technical users.
 The only prerequisite knowledge: "what AI tools do you already use?"
 
+## Database
+
+**Default: SQLite** — zero-install, single file (`~/.memory-palace/memories.db`).
+Full knowledge graph, embeddings, edges, traversal — all work on SQLite.
+
+**Upgrade path: PostgreSQL + pgvector** — for enterprise/scale deployments.
+Native vector indexes, ARRAY types, JSONB. Not required for individual users.
+
 ## Installer Targets
 
 | Target | Format | UI | Primary Audience |

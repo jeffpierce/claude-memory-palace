@@ -2,23 +2,34 @@
 SQLAlchemy models for Claude Memory Palace v2.
 
 Key changes from v1:
-- PostgreSQL with pgvector for native vector operations
 - Knowledge graph via memory_edges table
 - Project scoping for memories
 - Tags separate from keywords
-- Proper ARRAY types instead of JSON
+- Portable: works on SQLite (default) and PostgreSQL + pgvector (upgrade path)
+  - SQLite: JSON text for arrays, Text for embeddings, standard JSON for metadata
+  - PostgreSQL: native ARRAY, JSONB, pgvector Vector types
 """
 
 from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, Boolean, Float,
+    Column, Integer, String, Text, DateTime, Boolean, Float, JSON,
     ForeignKey, CheckConstraint, UniqueConstraint, Index,
     event, text
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship, declarative_base
+
+from memory_palace.config_v2 import get_embedding_dimension, is_postgres
+
+# Conditional PostgreSQL-specific imports
+_USE_PG_TYPES = is_postgres()
+
+if _USE_PG_TYPES:
+    try:
+        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY, JSONB
+    except ImportError:
+        _USE_PG_TYPES = False
 
 # Conditional pgvector import
 try:
@@ -28,23 +39,30 @@ except ImportError:
     HAS_PGVECTOR = False
     Vector = None
 
-from memory_palace.config_v2 import get_embedding_dimension, is_postgres
-
 Base = declarative_base()
 
+# --- Portable column type helpers ---
 
-def get_embedding_column():
-    """
-    Get the appropriate embedding column type based on database backend.
-    
-    Returns Vector(dim) for Postgres with pgvector, or Text for SQLite fallback.
-    """
-    if is_postgres() and HAS_PGVECTOR:
+def _array_column(nullable=True):
+    """ARRAY(Text) on PostgreSQL, JSON on SQLite."""
+    if _USE_PG_TYPES:
+        return Column(PG_ARRAY(Text), nullable=nullable)
+    return Column(JSON, nullable=nullable)
+
+
+def _jsonb_column(default=dict):
+    """JSONB on PostgreSQL, JSON on SQLite."""
+    if _USE_PG_TYPES:
+        return Column(JSONB, default=default)
+    return Column(JSON, default=default)
+
+
+def _embedding_column():
+    """Vector(dim) on PostgreSQL + pgvector, Text on SQLite."""
+    if _USE_PG_TYPES and HAS_PGVECTOR:
         dim = get_embedding_dimension()
         return Column(Vector(dim), nullable=True)
-    else:
-        # SQLite fallback - store as JSON text
-        return Column(Text, nullable=True)
+    return Column(Text, nullable=True)
 
 
 class Memory(Base):
@@ -72,10 +90,9 @@ class Memory(Base):
     subject = Column(String(255), nullable=True, index=True)
     content = Column(Text, nullable=False)
     
-    # Searchability - use ARRAY for Postgres, JSON string for SQLite
-    # Note: These are set dynamically based on database type
-    keywords = Column(ARRAY(Text), nullable=True)  # For semantic search
-    tags = Column(ARRAY(Text), nullable=True)  # For organization
+    # Searchability — ARRAY(Text) on PostgreSQL, JSON on SQLite
+    keywords = _array_column()  # For semantic search
+    tags = _array_column()  # For organization
     importance = Column(Integer, default=5, index=True)
     
     # Source tracking
@@ -83,11 +100,9 @@ class Memory(Base):
     source_context = Column(Text, nullable=True)
     source_session_id = Column(String(100), nullable=True)
     
-    # Embedding - Vector(768) for nomic-embed-text (recommended)
-    # Note: Dimension must match your embedding model
-    # nomic-embed-text (768d) is preferred because it fits pgvector HNSW index limits (<2000)
-    # and runs efficiently on CPU for AWS deployment
-    embedding = Column(Vector(768), nullable=True) if HAS_PGVECTOR else Column(Text, nullable=True)
+    # Embedding — Vector(dim) on PostgreSQL + pgvector, Text (JSON) on SQLite
+    # nomic-embed-text (768d) is preferred: fits pgvector HNSW limits, runs on CPU
+    embedding = _embedding_column()
     
     # Lifecycle
     last_accessed_at = Column(DateTime, nullable=True)
@@ -219,8 +234,8 @@ class MemoryEdge(Base):
     strength = Column(Float, default=1.0)  # 0-1, for weighted traversal
     bidirectional = Column(Boolean, default=False)  # If true, edge works both ways
     
-    # Extra data
-    edge_metadata = Column(JSONB, default=dict)  # Flexible extra data
+    # Extra data — JSONB on PostgreSQL, JSON on SQLite
+    edge_metadata = _jsonb_column(default=dict)
     created_by = Column(String(50), nullable=True)  # Which instance created this
     
     # Relationships
@@ -272,7 +287,10 @@ class HandoffMessage(Base):
     read_by = Column(String(50), nullable=True)
 
     __table_args__ = (
-        Index("idx_handoff_unread", "to_instance", postgresql_where=text("read_at IS NULL")),
+        # Partial index on PostgreSQL for fast unread lookups
+        # On SQLite this creates a normal index (still useful, just not filtered)
+        Index("idx_handoff_unread", "to_instance",
+              **({"postgresql_where": text("read_at IS NULL")} if _USE_PG_TYPES else {})),
     )
 
     def __repr__(self):
