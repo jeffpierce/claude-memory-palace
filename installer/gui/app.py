@@ -447,13 +447,27 @@ class InstallerApp:
             foreground="gray",
         ).pack(side=tk.LEFT, padx=(8, 0))
 
-        # LLM model (optional)
-        if self.model_rec.llm_model:
+        # Base LLM — always installed (qwen3:1.7b handles synthesis + classification)
+        row = ttk.Frame(opts_frame)
+        row.pack(fill=tk.X, pady=3)
+        ttk.Label(row, text="✓", foreground="green", font=("Segoe UI", 11)).pack(side=tk.LEFT)
+        ttk.Label(row, text="Base LLM (qwen3:1.7b)", font=("Segoe UI", 11)).pack(
+            side=tk.LEFT, padx=(8, 0)
+        )
+        ttk.Label(
+            row,
+            text="Synthesis, classification, extraction (~1GB)",
+            font=("Segoe UI", 9),
+            foreground="gray",
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        # Upgraded LLM model (optional — only shown if hardware supports something bigger)
+        if self.model_rec.llm_model and self.model_rec.llm_model != "qwen3:1.7b":
             row = ttk.Frame(opts_frame)
             row.pack(fill=tk.X, pady=3)
             self.install_llm_var.set(False)
             ttk.Checkbutton(
-                row, text="LLM model (optional)", variable=self.install_llm_var
+                row, text="Upgraded LLM (optional)", variable=self.install_llm_var
             ).pack(side=tk.LEFT)
             ttk.Label(
                 row,
@@ -464,7 +478,7 @@ class InstallerApp:
 
             ttk.Label(
                 opts_frame,
-                text="The LLM enables local memory extraction from transcripts. Can be added later.",
+                text="Higher quality extraction and synthesis. Can be added later.",
                 font=("Segoe UI", 9, "italic"),
                 foreground="gray",
                 wraplength=520,
@@ -566,9 +580,10 @@ class InstallerApp:
         self.root.after(0, lambda: self.progress_bar.configure(value=val))
 
     def _run_install(self):
-        steps = 5  # download, venv, package, embedding, configure
-        if self.install_llm_var.get() and self.model_rec.llm_model:
-            steps += 1
+        steps = 6  # download, venv, package, embedding, base LLM, configure
+        if (self.install_llm_var.get() and self.model_rec.llm_model
+                and self.model_rec.llm_model != "qwen3:1.7b"):
+            steps += 1  # upgraded LLM
         step_size = 100 // steps
         progress = 0
         success = True
@@ -634,9 +649,26 @@ class InstallerApp:
             progress += step_size
             self._set_progress(progress)
 
-            # 5. Optional LLM model
-            if self.install_llm_var.get() and self.model_rec.llm_model:
-                self._log(f"🧠 Downloading LLM model ({self.model_rec.llm_model})...")
+            # 5. Base LLM model (always — handles synthesis + classification)
+            base_llm = "qwen3:1.7b"
+            self._log(f"🧠 Downloading base LLM ({base_llm})...")
+            if check_model_installed(base_llm):
+                self._log("  ✓ Already installed")
+            else:
+                self._log("  ~1GB — synthesis, classification, extraction")
+                ok = pull_model(
+                    base_llm,
+                    progress_callback=lambda m: self._log(f"  {m}"),
+                )
+                if not ok:
+                    self._log("  ⚠ Base LLM download failed — retry later: ollama pull qwen3:1.7b")
+            progress += step_size
+            self._set_progress(progress)
+
+            # 6. Optional upgraded LLM model
+            if (self.install_llm_var.get() and self.model_rec.llm_model
+                    and self.model_rec.llm_model != base_llm):
+                self._log(f"🧠 Downloading upgraded LLM ({self.model_rec.llm_model})...")
                 if check_model_installed(self.model_rec.llm_model):
                     self._log("  ✓ Already installed")
                 else:
@@ -646,7 +678,7 @@ class InstallerApp:
                         progress_callback=lambda m: self._log(f"  {m}"),
                     )
                     if not ok:
-                        self._log("  ⚠ LLM model download failed — you can add it later")
+                        self._log("  ⚠ Upgraded LLM download failed — you can add it later")
                 progress += step_size
                 self._set_progress(progress)
 

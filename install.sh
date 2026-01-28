@@ -597,27 +597,38 @@ pull_models() {
         success "Embedding model ready"
     fi
     
-    # LLM model (optional, based on hardware)
+    # Base LLM model (required — handles synthesis, classification, extraction)
+    # qwen3:1.7b is always installed as the baseline
+    local BASE_LLM="qwen3:1.7b"
+    echo ""
+    if ollama list 2>/dev/null | grep -qi "qwen3:1.7b"; then
+        success "Base LLM model (qwen3:1.7b) already installed"
+    else
+        info "Downloading base LLM model (qwen3:1.7b)..."
+        info "${DIM}~1GB — handles synthesis, classification, and extraction${NC}"
+        ollama pull "$BASE_LLM"
+        success "Base LLM model ready"
+    fi
+    
+    # Upgraded LLM model (optional, for better quality on capable hardware)
     select_llm_model
     
-    if [[ -n "$LLM_MODEL" ]]; then
+    if [[ -n "$LLM_MODEL" ]] && [[ "$LLM_MODEL" != "$BASE_LLM" ]]; then
         echo ""
         if ollama list 2>/dev/null | grep -qi "${LLM_MODEL%%:*}"; then
-            success "LLM model already installed"
+            success "Upgraded LLM model already installed"
         else
-            echo -e "Recommended LLM for your hardware: ${BOLD}$LLM_MODEL${NC}"
-            echo -e "${DIM}Used for local memory extraction from transcripts${NC}"
+            echo -e "Recommended upgrade for your hardware: ${BOLD}$LLM_MODEL${NC}"
+            echo -e "${DIM}Better quality for memory extraction and synthesis${NC}"
             echo ""
             if prompt_yn "Download $LLM_MODEL?" "y"; then
                 info "Downloading $LLM_MODEL (this may take a while)..."
                 ollama pull "$LLM_MODEL"
-                success "LLM model ready"
+                success "Upgraded LLM model ready"
             else
-                info "Skipped — you can download it later with: ollama pull $LLM_MODEL"
+                info "Skipped — you can upgrade later with: ollama pull $LLM_MODEL"
             fi
         fi
-    else
-        info "No LLM model needed — your cloud AI tools handle memory synthesis"
     fi
 }
 

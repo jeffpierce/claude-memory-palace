@@ -367,24 +367,36 @@ function Pull-Models {
         Write-Success "Embedding model ready"
     }
     
-    # LLM model
+    # Base LLM model (required — handles synthesis, classification, extraction)
+    $baseLLM = "qwen3:1.7b"
+    Write-Host ""
+    if ($modelList -match "qwen3:1.7b") {
+        Write-Success "Base LLM model (qwen3:1.7b) already installed"
+    } else {
+        Write-Info "Downloading base LLM model (qwen3:1.7b)..."
+        Write-Host "  ~1GB — handles synthesis, classification, and extraction" -ForegroundColor DarkGray
+        & ollama pull $baseLLM
+        Write-Success "Base LLM model ready"
+    }
+
+    # Upgraded LLM model (optional, for better quality on capable hardware)
     Select-LLMModel
     
-    if ($script:LLMModel) {
+    if ($script:LLMModel -and $script:LLMModel -ne $baseLLM) {
         $modelBase = ($script:LLMModel -split ":")[0]
         if ($modelList -match $modelBase) {
-            Write-Success "LLM model already installed"
+            Write-Success "Upgraded LLM model already installed"
         } else {
             Write-Host ""
-            Write-Host "Recommended LLM for your hardware: $($script:LLMModel)" -ForegroundColor White
-            Write-Host "Used for local memory extraction from transcripts" -ForegroundColor DarkGray
+            Write-Host "Recommended upgrade for your hardware: $($script:LLMModel)" -ForegroundColor White
+            Write-Host "Better quality for memory extraction and synthesis" -ForegroundColor DarkGray
             Write-Host ""
             if (Prompt-YN "Download $($script:LLMModel)?") {
                 Write-Info "Downloading $($script:LLMModel) (this may take a while)..."
                 & ollama pull $script:LLMModel
-                Write-Success "LLM model ready"
+                Write-Success "Upgraded LLM model ready"
             } else {
-                Write-Info "Skipped — download later with: ollama pull $($script:LLMModel)"
+                Write-Info "Skipped — upgrade later with: ollama pull $($script:LLMModel)"
             }
         }
     }

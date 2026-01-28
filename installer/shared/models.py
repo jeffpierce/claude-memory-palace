@@ -45,6 +45,9 @@ def get_model_recommendation(gpu: GPUInfo) -> ModelRecommendation:
     classification_size = "~1GB"
 
     # LLM scales with hardware
+    # qwen3:1.7b is ALWAYS installed — it handles synthesis, classification,
+    # and memory extraction. Without it, there's no local intelligence.
+    # Larger models are optional upgrades for better quality.
     vram = gpu.vram_gb
 
     if vram >= 16:
@@ -59,23 +62,16 @@ def get_model_recommendation(gpu: GPUInfo) -> ModelRecommendation:
         llm_model = "qwen3:4b"
         llm_desc = "Qwen3 4B — decent memory extraction"
         llm_size = "~2.5GB"
-    elif vram >= 2 or gpu.available:
+    else:
+        # ≤2GB VRAM, CPU-only, or no GPU — qwen3:1.7b handles everything
+        # Runs fine on CPU, just slower. ~1GB download.
         llm_model = "qwen3:1.7b"
-        llm_desc = "Qwen3 1.7B — basic memory extraction"
+        llm_desc = "Qwen3 1.7B — synthesis, classification, extraction"
         llm_size = "~1GB"
-        # Same model as classification — one pull covers both
+        # Same model covers classification — no separate pull needed
         classification_model = None
         classification_desc = None
         classification_size = None
-    else:
-        # CPU-only or no GPU — skip LLM, cloud AI handles synthesis
-        llm_model = None
-        llm_desc = None
-        llm_size = None
-        # Still install classification model — it's tiny enough for CPU
-        classification_model = "qwen3:1.7b"
-        classification_desc = "Qwen3 1.7B — edge classification (CPU mode)"
-        classification_size = "~1GB"
 
     return ModelRecommendation(
         embedding_model=embedding_model,
