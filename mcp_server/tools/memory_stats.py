@@ -18,6 +18,7 @@ def register_memory_stats(mcp):
         - Total memories (active and archived)
         - Counts by type
         - Counts by instance
+        - Counts by project
         - Average importance
         - Most accessed memories
         - Recently added memories

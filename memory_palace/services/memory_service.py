@@ -606,6 +606,15 @@ def get_memory_stats() -> Dict[str, Any]:
         for instance, count in instance_counts:
             by_instance[instance] = count
 
+        # By project
+        by_project = {}
+        project_counts = db.query(
+            Memory.project,
+            func.count(Memory.id)
+        ).filter(Memory.is_archived == False).group_by(Memory.project).all()
+        for project, count in project_counts:
+            by_project[project or "life"] = count
+
         # Most accessed (top 5)
         most_accessed = db.query(Memory).filter(
             Memory.is_archived == False
@@ -628,6 +637,7 @@ def get_memory_stats() -> Dict[str, Any]:
             "archived_memories": total_archived,
             "by_type": by_type,
             "by_instance": by_instance,
+            "by_project": by_project,
             "average_importance": round(avg_importance, 2) if avg_importance else 0,
             "most_accessed": [f"#{m.id}: {m.subject or '(no subject)'}" for m in most_accessed],
             "recently_added": [f"#{m.id}: {m.subject or '(no subject)'}" for m in recent]
