@@ -128,21 +128,26 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
 
 Each worker can be a *different model*. Cheap local model for routine tasks, Claude for complex reasoning, specialized fine-tuned model for domain work — all sharing the same memory, all passing messages through the same bus. No single model needs to hold the whole picture.
 
-## Scaling Path
+## Backends: Both Ship Today
 
-The MCP interface is the abstraction layer. Swap the backend without changing any client code:
+Memory Palace includes two production backends. Both are built, tested, and deployed. Choose based on your use case:
 
 ```
-SQLite (personal)  →  Postgres (team)  →  Postgres cluster (enterprise)
-  Same MCP API           Same MCP API          Same MCP API
+SQLite (personal)     PostgreSQL (team/enterprise)
+  Zero config            Concurrent access
+  Single file            pgvector search
+  No dependencies        Scales to thousands
+       └──── Same MCP API ────┘
 ```
 
-| Tier | Backend | Concurrent Agents | Use Case |
-|------|---------|-------------------|----------|
-| Personal | SQLite | 1–10 | Individual developer, local AI instances |
-| Team | PostgreSQL + pgvector | 10–100 | Dev team sharing AI memory |
-| Department | PostgreSQL + read replicas | 100–500 | Cross-team knowledge sharing |
-| Enterprise | PostgreSQL cluster | 500–10,000+ | Full agent swarm orchestration |
+| Tier | Backend | Concurrent Agents | Use Case | Status |
+|------|---------|-------------------|----------|--------|
+| Personal | SQLite | 1–10 | Individual developer, local AI instances | ✅ Shipping |
+| Team | PostgreSQL + pgvector | 10–100 | Dev team sharing AI memory | ✅ Shipping |
+| Department | PostgreSQL + read replicas | 100–500 | Cross-team knowledge sharing | ✅ Shipping |
+| Enterprise | PostgreSQL cluster | 500–10,000+ | Full agent swarm orchestration | ✅ Shipping |
+
+SQLite is the default for zero-config setup — no database server needed, just a file. PostgreSQL is a config change away, no code changes required.
 
 ### Why PostgreSQL for Scale
 
@@ -155,6 +160,19 @@ PostgreSQL with pgvector provides:
 - **Connection pooling** — PgBouncer maps thousands of agent connections to a manageable pool
 - **LISTEN/NOTIFY** — Agents can receive push notifications for handoffs instead of polling
 - **Replication** — Read replicas for recall-heavy workloads (most agents read more than write)
+
+Switching from SQLite to PostgreSQL is a one-line config change:
+
+```json
+{
+  "database": {
+    "type": "postgres",
+    "url": "postgresql://user:pass@localhost/memory_palace"
+  }
+}
+```
+
+No client changes. No data migration tool needed. The MCP API is identical.
 
 ### Air-Gapped & Sovereign Deployment
 

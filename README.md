@@ -32,16 +32,13 @@ The context window is working memory. Memory Palace is long-term storage. That's
 
 ## Scaling
 
-```
-SQLite (personal)  →  PostgreSQL (team)  →  PostgreSQL cluster (enterprise)
-     Same MCP API          Same MCP API             Same MCP API
-```
+Both backends ship today. SQLite for zero-config personal use, PostgreSQL for everything bigger. Switch with a one-line config change — no code changes, no data migration tools.
 
-| Tier | Backend | Agents | Use Case |
-|------|---------|--------|----------|
-| Personal | SQLite | 1–10 | Individual dev, local AI instances |
-| Team | PostgreSQL + pgvector | 10–100 | Shared team knowledge |
-| Enterprise | PostgreSQL cluster | 500–10,000+ | Agent swarm orchestration |
+| Tier | Backend | Agents | Use Case | Status |
+|------|---------|--------|----------|--------|
+| Personal | SQLite | 1–10 | Individual dev, local AI instances | ✅ Shipping |
+| Team | PostgreSQL + pgvector | 10–100 | Shared team knowledge | ✅ Shipping |
+| Enterprise | PostgreSQL cluster | 500–10,000+ | Agent swarm orchestration | ✅ Shipping |
 
 See [Architecture](docs/architecture.md) for the full scaling path and [Use Cases](docs/use-cases.md) for examples at each tier.
 

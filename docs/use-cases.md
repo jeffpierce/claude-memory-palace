@@ -235,11 +235,13 @@ No central controller. No context bottleneck. Each agent has the institutional k
 
 ## Summary
 
-| Scale | Backend | Agents | Key Feature |
-|-------|---------|--------|-------------|
-| Personal | SQLite | 1–10 | Zero config, local file |
-| Team | PostgreSQL | 10–100 | Shared knowledge, concurrent access |
-| Department | PostgreSQL + replicas | 100–500 | Read scaling, department isolation |
-| Enterprise | PostgreSQL cluster | 500–10,000+ | Full fleet coordination, compliance |
+All tiers are built, tested, and shipping today.
 
-The MCP API is identical at every scale. The only thing that changes is the backend.
+| Scale | Backend | Agents | Key Feature | Status |
+|-------|---------|--------|-------------|--------|
+| Personal | SQLite | 1–10 | Zero config, local file | ✅ Shipping |
+| Team | PostgreSQL | 10–100 | Shared knowledge, concurrent access | ✅ Shipping |
+| Department | PostgreSQL + replicas | 100–500 | Read scaling, department isolation | ✅ Shipping |
+| Enterprise | PostgreSQL cluster | 500–10,000+ | Full fleet coordination, compliance | ✅ Shipping |
+
+The MCP API is identical at every scale. The only thing that changes is a one-line config swap.
