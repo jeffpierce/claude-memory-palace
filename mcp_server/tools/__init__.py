@@ -20,6 +20,8 @@ from .unlink import register_unlink
 from .related import register_related
 from .supersede import register_supersede
 from .graph import register_graph
+from .code_remember import register_code_remember
+from .code_recall import register_code_recall
 
 
 def register_all_tools(mcp):
@@ -44,6 +46,9 @@ def register_all_tools(mcp):
     register_related(mcp)
     register_supersede(mcp)
     register_graph(mcp)
+    # Code retrieval
+    register_code_remember(mcp)
+    register_code_recall(mcp)
 
 
 __all__ = ["register_all_tools"]

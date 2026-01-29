@@ -31,6 +31,10 @@ from memory_palace.services.graph_service import (
     get_relationship_types,
 )
 from memory_palace.services.reflection_service import reflect
+from memory_palace.services.code_service import (
+    code_remember,
+    code_recall,
+)
 
 __all__ = [
     # Handoff messaging
@@ -58,4 +62,7 @@ __all__ = [
     "get_relationship_types",
     # Reflection
     "reflect",
+    # Code retrieval
+    "code_remember",
+    "code_recall",
 ]
