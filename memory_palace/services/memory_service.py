@@ -12,7 +12,7 @@ from sqlalchemy import func, or_, String
 from memory_palace.models import Memory, MemoryEdge
 from memory_palace.database import get_session
 from memory_palace.embeddings import get_embedding, cosine_similarity
-from memory_palace.config_v2 import get_auto_link_config
+from memory_palace.config_v2 import get_auto_link_config, is_postgres
 from memory_palace.llm import classify_edge_type, classify_edge_types_batch
 
 
@@ -25,7 +25,7 @@ def _find_similar_memories(
     embedding: List[float],
     exclude_id: int,
     project: Optional[str] = None,
-    threshold: float = 0.50,
+    threshold: float = 0.675,
 ) -> List[Tuple[int, float]]:
     """
     Find memories similar to the given embedding.
@@ -494,25 +494,51 @@ def recall(
         query_embedding = get_embedding(formatted_query)
 
         if query_embedding:
-            # Semantic search: fetch all matching memories and rank by similarity
-            all_memories = base_query.all()
+            # Semantic search - use pgvector native ANN search on PostgreSQL,
+            # fall back to Python-side cosine similarity on SQLite
+            
+            if is_postgres():
+                # PostgreSQL + pgvector: Use native <=> operator with HNSW index
+                # This is O(log N) approximate nearest neighbor search
+                search_method = "semantic (pgvector)"
+                
+                # Filter to only memories with embeddings, order by cosine distance
+                # cosine_distance returns distance (0 = identical), we want similarity
+                vector_query = base_query.filter(
+                    Memory.embedding.isnot(None)
+                ).order_by(
+                    Memory.embedding.cosine_distance(query_embedding)
+                ).limit(limit)
+                
+                memories = vector_query.all()
+                
+                # Compute similarity scores for the results
+                # (pgvector doesn't return distance in result, need to compute)
+                similarity_scores = {}
+                for memory in memories:
+                    sim = cosine_similarity(query_embedding, memory.embedding)
+                    similarity_scores[memory.id] = sim
+            else:
+                # SQLite: No pgvector, use Python-side cosine similarity
+                # This is O(N) but SQLite has no vector index anyway
+                all_memories = base_query.all()
 
-            # Score each memory by cosine similarity
-            scored_memories = []
-            for memory in all_memories:
-                if memory.embedding is not None:
-                    similarity = cosine_similarity(query_embedding, memory.embedding)
-                    scored_memories.append((memory, similarity))
-                else:
-                    # No embedding - give a low similarity score so it appears at the end
-                    scored_memories.append((memory, -1.0))
+                # Score each memory by cosine similarity
+                scored_memories = []
+                for memory in all_memories:
+                    if memory.embedding is not None:
+                        similarity = cosine_similarity(query_embedding, memory.embedding)
+                        scored_memories.append((memory, similarity))
+                    else:
+                        # No embedding - give a low similarity score so it appears at the end
+                        scored_memories.append((memory, -1.0))
 
-            # Sort by similarity (highest first)
-            scored_memories.sort(key=lambda x: x[1], reverse=True)
+                # Sort by similarity (highest first)
+                scored_memories.sort(key=lambda x: x[1], reverse=True)
 
-            # Take top N
-            memories = [m for m, score in scored_memories[:limit]]
-            similarity_scores = {m.id: score for m, score in scored_memories[:limit]}
+                # Take top N
+                memories = [m for m, score in scored_memories[:limit]]
+                similarity_scores = {m.id: score for m, score in scored_memories[:limit]}
         else:
             # Fallback to keyword search (improved: AND together all words)
             search_method = "keyword (fallback)"

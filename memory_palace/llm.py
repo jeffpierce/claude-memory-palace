@@ -119,14 +119,16 @@ def generate_with_llm(
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "think": True,  # Enable Qwen3 thinking/reasoning mode
             "keep_alive": "0",  # Unload model immediately - aggressive VRAM strategy
             "options": {
-                "num_ctx": 8192,    # 8K context - plenty for memory synthesis
+                "num_ctx": 32768,   # 32K context - needed for large code files
                 "num_predict": 2048,  # Focused output, not dissertations
                 "flash_attn": True  # Flash attention - ~2x KV cache efficiency
             }
         }
+        # Enable thinking mode only for Qwen3 models (others 400 on this param)
+        if model and model.startswith("qwen3"):
+            request_body["think"] = True
         if system:
             request_body["system"] = system
 
