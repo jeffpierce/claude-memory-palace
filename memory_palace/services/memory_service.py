@@ -6,6 +6,8 @@ Provides functions for storing, recalling, archiving, and managing memories.
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
+import os
+import math
 
 from sqlalchemy import func, or_, String
 
@@ -18,6 +20,75 @@ from memory_palace.llm import classify_edge_type, classify_edge_types_batch
 
 # Valid source types for memories
 VALID_SOURCE_TYPES = ["conversation", "explicit", "inferred", "observation"]
+
+# Centrality-weighted retrieval configuration
+# These control how much each factor influences ranking:
+# score = (cosine_similarity × α) + (log(access_count + 1) × β) + (centrality × γ)
+DEFAULT_WEIGHT_SIMILARITY = 0.7  # Semantic relevance (primary signal)
+DEFAULT_WEIGHT_ACCESS = 0.15     # Popularity/usefulness (secondary)
+DEFAULT_WEIGHT_CENTRALITY = 0.15 # Graph importance (secondary)
+
+def _get_retrieval_weights() -> Tuple[float, float, float]:
+    """
+    Get the retrieval weighting factors from environment variables.
+
+    Returns:
+        Tuple of (alpha, beta, gamma) weights
+    """
+    alpha = float(os.environ.get("MEMORY_PALACE_WEIGHT_SIMILARITY", DEFAULT_WEIGHT_SIMILARITY))
+    beta = float(os.environ.get("MEMORY_PALACE_WEIGHT_ACCESS", DEFAULT_WEIGHT_ACCESS))
+    gamma = float(os.environ.get("MEMORY_PALACE_WEIGHT_CENTRALITY", DEFAULT_WEIGHT_CENTRALITY))
+
+    # Normalize to ensure they sum to ~1.0 (for interpretability)
+    total = alpha + beta + gamma
+    if total > 0:
+        alpha /= total
+        beta /= total
+        gamma /= total
+
+    return alpha, beta, gamma
+
+
+def _compute_in_degree_centrality(db, memory_ids: List[int]) -> Dict[int, float]:
+    """
+    Compute normalized in-degree centrality for a list of memories.
+
+    In-degree = number of incoming edges (how many other memories point to this one)
+    Normalized = in_degree / max_in_degree (so scores are 0-1)
+
+    Args:
+        db: Database session
+        memory_ids: List of memory IDs to compute centrality for
+
+    Returns:
+        Dict mapping memory_id -> normalized_centrality (0.0-1.0)
+    """
+    if not memory_ids:
+        return {}
+
+    # Count incoming edges for each memory in one query
+    # This is O(1) with proper indexing on target_id
+    centrality_query = db.query(
+        MemoryEdge.target_id,
+        func.count(MemoryEdge.id).label("in_degree")
+    ).filter(
+        MemoryEdge.target_id.in_(memory_ids)
+    ).group_by(MemoryEdge.target_id).all()
+
+    # Build raw centrality map
+    centrality_raw = {mid: 0 for mid in memory_ids}
+    for target_id, in_degree in centrality_query:
+        centrality_raw[target_id] = in_degree
+
+    # Normalize by max (so most central node has score 1.0)
+    max_degree = max(centrality_raw.values()) if centrality_raw.values() else 0
+
+    if max_degree == 0:
+        # No edges - all memories have centrality 0
+        return {mid: 0.0 for mid in memory_ids}
+
+    # Normalize to 0-1 range
+    return {mid: degree / max_degree for mid, degree in centrality_raw.items()}
 
 
 def _find_similar_memories(
@@ -496,52 +567,97 @@ def recall(
         if query_embedding:
             # Semantic search - use pgvector native ANN search on PostgreSQL,
             # fall back to Python-side cosine similarity on SQLite
-            
+
             if is_postgres():
                 # PostgreSQL + pgvector: Use native <=> operator with HNSW index
                 # This is O(log N) approximate nearest neighbor search
-                search_method = "semantic (pgvector)"
-                
+                search_method = "semantic (pgvector, centrality-weighted)"
+
+                # Fetch more candidates than limit since we'll re-rank
+                # Fetch 3x to ensure we have enough after centrality weighting
+                candidate_limit = limit * 3
+
                 # Filter to only memories with embeddings, order by cosine distance
-                # cosine_distance returns distance (0 = identical), we want similarity
                 vector_query = base_query.filter(
                     Memory.embedding.isnot(None)
                 ).order_by(
                     Memory.embedding.cosine_distance(query_embedding)
-                ).limit(limit)
-                
-                memories = vector_query.all()
-                
-                # Compute similarity scores for the results
-                # (pgvector doesn't return distance in result, need to compute)
+                ).limit(candidate_limit)
+
+                candidates = vector_query.all()
+
+                # Compute similarity scores for the candidates
                 similarity_scores = {}
-                for memory in memories:
+                for memory in candidates:
                     sim = cosine_similarity(query_embedding, memory.embedding)
                     similarity_scores[memory.id] = sim
             else:
                 # SQLite: No pgvector, use Python-side cosine similarity
                 # This is O(N) but SQLite has no vector index anyway
+                search_method = "semantic (centrality-weighted)"
                 all_memories = base_query.all()
 
                 # Score each memory by cosine similarity
-                scored_memories = []
+                candidates = []
+                similarity_scores = {}
                 for memory in all_memories:
                     if memory.embedding is not None:
                         similarity = cosine_similarity(query_embedding, memory.embedding)
-                        scored_memories.append((memory, similarity))
+                        similarity_scores[memory.id] = similarity
+                        candidates.append(memory)
                     else:
                         # No embedding - give a low similarity score so it appears at the end
-                        scored_memories.append((memory, -1.0))
+                        similarity_scores[memory.id] = -1.0
+                        candidates.append(memory)
 
-                # Sort by similarity (highest first)
-                scored_memories.sort(key=lambda x: x[1], reverse=True)
+            # Centrality-weighted re-ranking
+            # Get weights from environment
+            alpha, beta, gamma = _get_retrieval_weights()
 
-                # Take top N
-                memories = [m for m, score in scored_memories[:limit]]
-                similarity_scores = {m.id: score for m, score in scored_memories[:limit]}
+            # Compute normalized access counts (log transform to prevent Matthew effect)
+            access_counts = {m.id: m.access_count for m in candidates}
+            max_access = max(access_counts.values()) if access_counts.values() else 0
+
+            if max_access > 0:
+                # Normalize log(access_count + 1) to 0-1 range
+                max_log_access = math.log(max_access + 1)
+                normalized_access = {
+                    mid: math.log(count + 1) / max_log_access
+                    for mid, count in access_counts.items()
+                }
+            else:
+                normalized_access = {mid: 0.0 for mid in access_counts.keys()}
+
+            # Compute normalized in-degree centrality
+            candidate_ids = [m.id for m in candidates]
+            normalized_centrality = _compute_in_degree_centrality(db, candidate_ids)
+
+            # Compute combined scores
+            combined_scores = []
+            for memory in candidates:
+                mid = memory.id
+
+                # Normalize similarity score (already 0-1, but handle -1 for missing embeddings)
+                sim_score = max(0.0, similarity_scores.get(mid, 0.0))
+                access_score = normalized_access.get(mid, 0.0)
+                centrality_score = normalized_centrality.get(mid, 0.0)
+
+                # Weighted combination
+                combined = (alpha * sim_score) + (beta * access_score) + (gamma * centrality_score)
+
+                combined_scores.append((memory, combined))
+
+            # Sort by combined score (highest first)
+            combined_scores.sort(key=lambda x: x[1], reverse=True)
+
+            # Take top N
+            memories = [m for m, score in combined_scores[:limit]]
+
+            # Keep similarity_scores for synthesis context
+            # (LLM needs to know semantic relevance, not combined score)
         else:
             # Fallback to keyword search (improved: AND together all words)
-            search_method = "keyword (fallback)"
+            search_method = "keyword (centrality-weighted fallback)"
 
             if query:
                 # Split query into words and AND them together
@@ -556,14 +672,65 @@ def recall(
                         )
                     )
 
-            # Order by importance DESC, then access_count DESC, then created_at DESC
-            base_query = base_query.order_by(
-                Memory.importance.desc(),
-                Memory.access_count.desc(),
-                Memory.created_at.desc()
-            ).limit(limit)
+            # Get all keyword matches (no limit yet - we'll re-rank)
+            candidates = base_query.all()
 
-            memories = base_query.all()
+            # Without semantic similarity, we use importance + access + centrality
+            # Get weights (note: alpha won't be used, so redistribute to beta/gamma)
+            _, beta, gamma = _get_retrieval_weights()
+
+            # Redistribute similarity weight to access and centrality (50/50)
+            alpha = 0.0  # No semantic signal
+            # Renormalize beta and gamma
+            if beta + gamma > 0:
+                total = beta + gamma
+                beta = beta / total
+                gamma = gamma / total
+            else:
+                beta = 0.5
+                gamma = 0.5
+
+            # Compute normalized access counts (log transform)
+            access_counts = {m.id: m.access_count for m in candidates}
+            max_access = max(access_counts.values()) if access_counts.values() else 0
+
+            if max_access > 0:
+                max_log_access = math.log(max_access + 1)
+                normalized_access = {
+                    mid: math.log(count + 1) / max_log_access
+                    for mid, count in access_counts.items()
+                }
+            else:
+                normalized_access = {mid: 0.0 for mid in access_counts.keys()}
+
+            # Compute normalized in-degree centrality
+            candidate_ids = [m.id for m in candidates]
+            normalized_centrality = _compute_in_degree_centrality(db, candidate_ids)
+
+            # Compute normalized importance (0-1 range, importance is 1-10)
+            normalized_importance = {m.id: (m.importance - 1) / 9 for m in candidates}
+
+            # Compute combined scores
+            # In keyword mode: score = (importance × 0.4) + (access × beta) + (centrality × gamma)
+            # Importance gets a boost since we have no semantic signal
+            combined_scores = []
+            for memory in candidates:
+                mid = memory.id
+
+                importance_score = normalized_importance.get(mid, 0.0)
+                access_score = normalized_access.get(mid, 0.0)
+                centrality_score = normalized_centrality.get(mid, 0.0)
+
+                # Weighted combination (importance gets 40%, rest split by beta/gamma ratio)
+                combined = (0.4 * importance_score) + (beta * access_score) + (gamma * centrality_score)
+
+                combined_scores.append((memory, combined))
+
+            # Sort by combined score (highest first)
+            combined_scores.sort(key=lambda x: x[1], reverse=True)
+
+            # Take top N
+            memories = [m for m, score in combined_scores[:limit]]
             similarity_scores = {}
 
         # Update access tracking for retrieved memories
