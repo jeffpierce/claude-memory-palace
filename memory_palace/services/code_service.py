@@ -17,7 +17,7 @@ from typing import Dict, Any, List, Optional
 from memory_palace.models import Memory, MemoryEdge
 from memory_palace.database import get_session
 from memory_palace.services.memory_service import remember, recall
-from memory_palace.services.graph_service import link_memories, get_related_memories
+from memory_palace.services.graph_service import link_memories, get_related_memories, supersede_memory
 from memory_palace.llm import generate_with_llm, is_llm_available
 
 # Add tools directory to path for transpiler import
@@ -56,30 +56,34 @@ def code_remember(
         # Normalize path for consistent matching
         code_path = str(Path(code_path).resolve())
         
-        # Check if already indexed (unless force=True)
-        if not force:
-            existing = db.query(Memory).filter(
-                Memory.project == project,
-                Memory.memory_type == "code_description",
-                Memory.source_context.contains(code_path)
-            ).first()
-            
-            if existing:
-                # Find the linked code memory
-                related = get_related_memories(
-                    existing.id,
-                    relation_type="source_of",
-                    direction="outgoing"
-                )
-                code_id = related["memories"][0]["id"] if related.get("memories") else None
-                
+        # Check for existing index (for both early-return and supersession)
+        existing_prose = db.query(Memory).filter(
+            Memory.project == project,
+            Memory.memory_type == "code_description",
+            Memory.source_context.contains(code_path),
+            Memory.is_archived == False  # Only match non-archived
+        ).first()
+
+        existing_code_id = None
+        if existing_prose:
+            # Find the linked code memory
+            related = get_related_memories(
+                existing_prose.id,
+                relation_type="source_of",
+                direction="outgoing"
+            )
+            existing_code_id = related["memories"][0]["id"] if related.get("memories") else None
+
+            if not force:
+                # Already indexed and not forcing re-index
                 return {
                     "already_indexed": True,
-                    "prose_id": existing.id,
-                    "code_id": code_id,
-                    "subject": existing.subject,
-                    "message": f"File already indexed. Use force=True to re-index."
+                    "prose_id": existing_prose.id,
+                    "code_id": existing_code_id,
+                    "subject": existing_prose.subject,
+                    "message": "File already indexed. Use force=True to re-index."
                 }
+            # If force=True, continue to re-index (old IDs captured for supersession)
         
         # Read and transpile the file
         transpile_result = transpile_file(code_path)
@@ -156,13 +160,22 @@ def code_remember(
                 "subject": transpile_result["subject"],
                 "warning": f"Memories created but edge failed: {link_result['error']}"
             }
-        
+
+        # Supersede old pair if this was a re-index (force=True with existing)
+        superseded_prose_id = None
+        if existing_prose:
+            supersede_memory(prose_id, existing_prose.id, archive_old=True, created_by=instance_id)
+            superseded_prose_id = existing_prose.id
+            if existing_code_id:
+                supersede_memory(code_id, existing_code_id, archive_old=True, created_by=instance_id)
+
         return {
             "prose_id": prose_id,
             "code_id": code_id,
             "subject": transpile_result["subject"],
             "language": transpile_result["language"],
-            "patterns": transpile_result.get("patterns", [])
+            "patterns": transpile_result.get("patterns", []),
+            "superseded_prose_id": superseded_prose_id  # None if fresh index
         }
         
     finally:

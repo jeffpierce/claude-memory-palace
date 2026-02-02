@@ -43,8 +43,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # Auto-linking configuration (creates edges at remember() time)
     "auto_link": {
         "enabled": True,  # Set False to disable automatic edge creation
-        "link_threshold": 0.65,  # Auto-create edges at this similarity and above
-        "suggest_threshold": 0.50,  # Surface suggestions between this and link_threshold
+        "link_threshold": 0.75,  # Auto-create edges at this similarity and above
+        "suggest_threshold": 0.675,  # Surface suggestions between this and link_threshold
         "max_suggestions": 10,  # Cap on suggested (non-auto) links returned
         "same_project_only": True,  # Only link to memories in the same project
         "classify_edges": True,  # Use LLM to classify edge types (vs all relates_to)
@@ -338,8 +338,8 @@ def get_auto_link_config() -> Dict[str, Any]:
     Returns:
         Dict with auto_link settings:
         - enabled: bool (default True)
-        - link_threshold: float (default 0.65) — auto-create edges at this similarity+
-        - suggest_threshold: float (default 0.50) — surface suggestions between this and link_threshold
+        - link_threshold: float (default 0.75) — auto-create edges at this similarity+
+        - suggest_threshold: float (default 0.675) — surface suggestions between this and link_threshold
         - max_suggestions: int (default 10) — cap on suggested (non-auto) links
         - same_project_only: bool (default True)
         - classify_edges: bool (default True)
@@ -349,8 +349,8 @@ def get_auto_link_config() -> Dict[str, Any]:
     auto_link = config.get("auto_link", {})
     return {
         "enabled": auto_link.get("enabled", True),
-        "link_threshold": auto_link.get("link_threshold", 0.65),
-        "suggest_threshold": auto_link.get("suggest_threshold", 0.50),
+        "link_threshold": auto_link.get("link_threshold", 0.75),
+        "suggest_threshold": auto_link.get("suggest_threshold", 0.675),
         "max_suggestions": auto_link.get("max_suggestions", 10),
         "same_project_only": auto_link.get("same_project_only", True),
         "classify_edges": auto_link.get("classify_edges", True),

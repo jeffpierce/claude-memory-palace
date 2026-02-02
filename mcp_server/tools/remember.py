@@ -39,9 +39,9 @@ def register_remember(mcp):
         - If it would be useful in a future session, STORE IT NOW
 
         AUTO-LINKING (two tiers):
-        - **Auto-linked** (>= 0.65 similarity): Edges created automatically with LLM-classified types.
+        - **Auto-linked** (>= 0.75 similarity): Edges created automatically with LLM-classified types.
           Returned in `links_created`.
-        - **Suggested** (0.50–0.65 similarity): Surfaced for human review, no edges created.
+        - **Suggested** (0.675–0.75 similarity): Surfaced for human review, no edges created.
           Returned in `suggested_links` — present these to the user if relevant.
         
         For explicit supersession or other typed relationships, use supersedes_id or memory_link.

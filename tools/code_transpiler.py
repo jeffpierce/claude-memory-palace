@@ -28,13 +28,15 @@ from memory_palace.llm import generate_with_llm, is_llm_available, get_active_ll
 # Maximum file size: 120k chars (~30k tokens for Qwen3's 32k context)
 MAX_FILE_CHARS = 120_000
 
-# Preferred models for code transpilation (need larger context/capability)
+# Preferred models for code transpilation
 # Order matters - first available will be used
+# qwen3:14b is reliable for JSON output; mistral escapes underscores as markdown
 TRANSPILER_PREFERRED_MODELS = [
     "qwen3:14b",
     "qwen3:8b",
+    "qwen3:4b",
+    "mistral:7b",
     "llama3.2",
-    "llama3.1",
 ]
 
 
