@@ -105,6 +105,53 @@ For `memory_get`, synthesis is skipped for single memories (pointless to summari
 | `memory_backfill_embeddings` | Generate embeddings for memories that don't have them |
 | `convert_jsonl_to_toon` | Convert JSONL transcripts to chunked TOON format |
 
+### Code Retrieval Tools
+
+Index source files for natural language search over your codebase. The system creates two linked memories per file:
+
+1. **Prose memory** - LLM-generated description of the code (embedded for semantic search)
+2. **Code memory** - The actual source code (stored but NOT embedded, linked via knowledge graph)
+
+This separation is intentional: embedding raw code produces poor semantic matches, but embedding a prose description of what the code does enables queries like "how does retry logic work?" to find relevant files.
+
+| Tool | Description |
+|------|-------------|
+| `code_remember_tool` | Index a source file into the palace |
+| `code_recall_tool` | Search indexed code using natural language |
+
+**`code_remember_tool` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `code_path` | string | Absolute path to the source file |
+| `project` | string | Project name (e.g., "memory-palace") |
+| `instance_id` | string | Which instance is indexing (e.g., "code") |
+| `force` | bool | Re-index even if already indexed (default: false) |
+
+**`code_recall_tool` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string | Natural language search query |
+| `project` | string | Filter by project (optional) |
+| `synthesize` | bool | If true, LLM answers directly. If false, returns raw matches. (default: true) |
+| `limit` | int | Maximum files to return (default: 5) |
+
+**Example workflow:**
+
+```python
+# Index important files
+code_remember_tool(code_path="/project/src/database.py", project="my-app", instance_id="code")
+code_remember_tool(code_path="/project/src/api/endpoints.py", project="my-app", instance_id="code")
+
+# Later, query naturally
+code_recall_tool(query="How does database connection pooling work?")
+# Returns: synthesized answer with source citations
+
+code_recall_tool(query="Show me the retry logic", synthesize=False)
+# Returns: raw {prose, code, similarity} pairs for manual analysis
+```
+
 ### Handoff Tools
 
 | Tool | Description |
@@ -112,6 +159,45 @@ For `memory_get`, synthesis is skipped for single memories (pointless to summari
 | `handoff_send` | Send message to another Claude instance |
 | `handoff_get` | Check for messages from other instances |
 | `handoff_mark_read` | Mark a handoff message as read |
+
+### Knowledge Graph Tools
+
+Build typed relationships between memories. Enables graph traversal, supersession tracking, and centrality-weighted retrieval.
+
+| Tool | Description |
+|------|-------------|
+| `memory_link` | Create an edge between two memories |
+| `memory_unlink` | Remove an edge between memories |
+| `memory_related` | Get memories connected to a given memory (1 hop) |
+| `memory_graph` | Traverse the knowledge graph from a starting point |
+| `memory_supersede` | Mark a new memory as replacing an old one |
+| `memory_relationship_types` | List available relationship types |
+
+**Standard relationship types:**
+
+| Type | Description |
+|------|-------------|
+| `relates_to` | General association (often bidirectional) |
+| `derived_from` | This memory came from processing that one |
+| `contradicts` | Memories make conflicting claims |
+| `exemplifies` | This is an example of that concept |
+| `refines` | Adds detail/nuance to another memory |
+| `supersedes` | Newer memory replaces older (archives the old one) |
+
+Custom types are allowed - use descriptive names like `caused_by`, `blocks`, `spawned_by`, etc.
+
+**Example:**
+
+```python
+# Link related memories
+memory_link(source_id=42, target_id=17, relation_type="derived_from")
+
+# Find what's connected
+memory_related(memory_id=42)  # Returns incoming and outgoing edges
+
+# Traverse the graph
+memory_graph(start_id=42, max_depth=2)  # BFS traversal up to 2 hops
+```
 
 ### Example Usage
 

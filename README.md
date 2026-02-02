@@ -62,6 +62,8 @@ Once configured with Claude Desktop, use natural language:
 
 ## Tools
 
+### Memory Tools
+
 | Tool | Description |
 |------|-------------|
 | `memory_remember` | Store a new memory |
@@ -71,11 +73,55 @@ Once configured with Claude Desktop, use natural language:
 | `memory_stats` | Memory system overview |
 | `memory_get` | Retrieve memories by ID (supports `synthesize` param) |
 | `memory_backfill_embeddings` | Generate embeddings for memories without them |
+
+Both `memory_recall` and `memory_get` support `synthesize=true/false` to control whether results are returned as raw objects or processed through the local LLM for natural language summaries.
+
+### Code Retrieval Tools
+
+Index source files for natural language search. The system creates two linked memories per file: a prose description (embedded for semantic search) and the actual source code (stored but not embedded). Queries hit the prose, then graph traversal retrieves the code.
+
+| Tool | Description |
+|------|-------------|
+| `code_remember_tool` | Index a source file into the palace |
+| `code_recall_tool` | Search indexed code using natural language |
+
+**Example usage:**
+
+```python
+# Index a file
+code_remember_tool(
+    code_path="/path/to/database.py",
+    project="my-project",
+    instance_id="code"
+)
+
+# Query later
+code_recall_tool(query="How does the database connection work?")
+code_recall_tool(query="Show me the retry logic", synthesize=False)
+```
+
+### Handoff Tools
+
+| Tool | Description |
+|------|-------------|
 | `handoff_send` | Send message to another Claude instance |
 | `handoff_get` | Check for messages from other instances |
 | `handoff_mark_read` | Mark a handoff message as read |
 
-Both `memory_recall` and `memory_get` support `synthesize=true/false` to control whether results are returned as raw objects or processed through the local LLM for natural language summaries.
+### Knowledge Graph Tools
+
+Build relationships between memories for richer retrieval and traversal.
+
+| Tool | Description |
+|------|-------------|
+| `memory_link` | Create an edge between two memories |
+| `memory_unlink` | Remove an edge between memories |
+| `memory_related` | Get memories connected to a given memory (1 hop) |
+| `memory_graph` | Traverse the knowledge graph from a starting point |
+| `memory_supersede` | Mark a new memory as replacing an old one |
+| `memory_relationship_types` | List available relationship types |
+
+**Standard relationship types:** `relates_to`, `derived_from`, `contradicts`, `exemplifies`, `refines`, `supersedes`
 
 ## Architecture
 
