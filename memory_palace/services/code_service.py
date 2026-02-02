@@ -25,6 +25,61 @@ _tools_dir = Path(__file__).parent.parent.parent / "tools"
 sys.path.insert(0, str(_tools_dir))
 
 from code_transpiler import transpile_code_to_prose, transpile_file
+import re
+
+
+def _normalize_path(path: str) -> str:
+    """
+    Normalize a file path to a canonical form for cross-platform matching.
+
+    Handles:
+    - WSL paths: /mnt/c/Users/... → C:/Users/...
+    - Windows backslashes: C:\\Users\\... → C:/Users/...
+    - Drive letter case: c:/... → C:/...
+
+    Returns a canonical path with forward slashes and uppercase drive letter.
+    """
+    path = str(path)
+
+    # Convert WSL /mnt/X/ paths to X:/
+    wsl_match = re.match(r'^/mnt/([a-zA-Z])/(.*)', path)
+    if wsl_match:
+        drive = wsl_match.group(1).upper()
+        rest = wsl_match.group(2)
+        path = f"{drive}:/{rest}"
+
+    # Convert backslashes to forward slashes
+    path = path.replace('\\', '/')
+
+    # Uppercase drive letter if present (C:/ not c:/)
+    if len(path) >= 2 and path[1] == ':':
+        path = path[0].upper() + path[1:]
+
+    return path
+
+
+def _get_path_variants(normalized_path: str) -> List[str]:
+    """
+    Generate path variants for matching against stored paths.
+
+    Given a normalized path like C:/Users/jeffr/..., generates:
+    - C:/Users/jeffr/... (normalized)
+    - /mnt/c/Users/jeffr/... (WSL)
+    - C:\\Users\\jeffr\\... (Windows backslash)
+    """
+    variants = [normalized_path]
+
+    # If it's a Windows-style path, generate WSL variant
+    if len(normalized_path) >= 2 and normalized_path[1] == ':':
+        drive = normalized_path[0].lower()
+        rest = normalized_path[3:]  # Skip "C:/"
+        wsl_path = f"/mnt/{drive}/{rest}"
+        variants.append(wsl_path)
+
+    # Add backslash variant
+    variants.append(normalized_path.replace('/', '\\'))
+
+    return variants
 
 
 def code_remember(
@@ -53,15 +108,18 @@ def code_remember(
     """
     db = get_session()
     try:
-        # Normalize path for consistent matching
+        # Normalize path for consistent cross-platform matching
         code_path = str(Path(code_path).resolve())
-        
-        # Check for existing index (for both early-return and supersession)
+        canonical_path = _normalize_path(code_path)
+        path_variants = _get_path_variants(canonical_path)
+
+        # Check for existing index using any path variant (handles WSL vs Windows)
+        from sqlalchemy import or_
         existing_prose = db.query(Memory).filter(
             Memory.project == project,
             Memory.memory_type == "code_description",
-            Memory.source_context.contains(code_path),
-            Memory.is_archived == False  # Only match non-archived
+            Memory.is_archived == False,
+            or_(*[Memory.source_context.contains(variant) for variant in path_variants])
         ).first()
 
         existing_code_id = None
@@ -97,14 +155,15 @@ def code_remember(
         except Exception as e:
             return {"error": f"Failed to read code file: {e}"}
         
-        # Build keywords from transpiler output
-        keywords = [code_path, transpile_result["language"]]
+        # Build keywords from transpiler output (use canonical path for consistency)
+        keywords = [canonical_path, transpile_result["language"]]
         keywords.extend(transpile_result.get("dependencies", []))
         keywords.extend(transpile_result.get("patterns", []))
         # Filter out empty strings and deduplicate
         keywords = list(set(k for k in keywords if k))
-        
+
         # Store prose description via remember() - gets embedding
+        # Use canonical_path in source_context for cross-platform matching
         prose_result = remember(
             instance_id=instance_id,
             memory_type="code_description",
@@ -114,7 +173,7 @@ def code_remember(
             importance=5,
             project=project,
             source_type="explicit",
-            source_context=f"Indexed from: {code_path}"
+            source_context=f"Indexed from: {canonical_path}"
         )
         
         if "error" in prose_result:
@@ -123,6 +182,7 @@ def code_remember(
         prose_id = prose_result["id"]
         
         # Store raw code via DIRECT Memory creation (no embedding)
+        # Use canonical_path for cross-platform consistency
         file_name = Path(code_path).name
         code_memory = Memory(
             instance_id=instance_id,
@@ -130,10 +190,10 @@ def code_remember(
             memory_type="code",
             content=code_content,
             subject=f"Source: {file_name}",
-            keywords=[code_path, file_name],
+            keywords=[canonical_path, file_name],
             importance=5,
             source_type="explicit",
-            source_context=f"Raw code from: {code_path}"
+            source_context=f"Raw code from: {canonical_path}"
             # NOTE: No embedding field set - this memory is NOT embedded
         )
         db.add(code_memory)
