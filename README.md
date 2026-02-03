@@ -1,4 +1,4 @@
-# Claude Memory Palace
+# Memory Palace
 
 Persistent semantic memory for Claude instances. Store facts, decisions, insights, and context across conversations. Search by meaning, not just keywords.
 
