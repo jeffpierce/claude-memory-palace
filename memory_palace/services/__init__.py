@@ -35,6 +35,11 @@ from memory_palace.services.code_service import (
     code_remember,
     code_recall,
 )
+from memory_palace.services.maintenance_service import (
+    audit_palace,
+    batch_archive_memories,
+    reembed_memories,
+)
 
 __all__ = [
     # Handoff messaging
@@ -65,4 +70,8 @@ __all__ = [
     # Code retrieval
     "code_remember",
     "code_recall",
+    # Maintenance
+    "audit_palace",
+    "batch_archive_memories",
+    "reembed_memories",
 ]

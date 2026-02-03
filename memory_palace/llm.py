@@ -203,11 +203,13 @@ CLASSIFICATION_PROMPT = """You are classifying the relationship between two memo
 IMPORTANT: You must NEVER return "supersedes". Only a human can decide that one memory supersedes another. If two memories conflict, return "contradicts" — the user will decide how to resolve it.
 
 Relationship types:
-- relates_to: General topical similarity, no direct logical dependency between the two
+- relates_to: General topical similarity, related topics, or components of the same system. USE THIS for code descriptions of different files in the same project - they complement each other, they don't contradict.
 - derived_from: Memory B was built from, implements, or extends Memory A
-- contradicts: Memory A and Memory B make conflicting or incompatible claims about the same thing. This includes cases where Memory B appears to update, replace, or override Memory A — always use contradicts, never supersedes.
+- contradicts: Memory A and Memory B make DIRECTLY CONFLICTING factual claims. Example: "The server runs on port 8080" vs "The server runs on port 3000". Do NOT use this for code descriptions of different files - different files don't contradict each other, they relate_to each other.
 - exemplifies: Memory B describes a specific real-world event or instance that illustrates the abstract concept in Memory A. Memory A is a rule; Memory B is a case where the rule applied.
 - refines: Memory B is an updated, more precise version of the SAME statement in Memory A. Both say the same thing, but B adds exact numbers, names, or details that A left vague.
+
+BIAS TOWARD relates_to: When in doubt, use relates_to. Most similar memories are related, not contradictory.
 
 Memory A: "{subject_a}"
 
@@ -218,30 +220,26 @@ Relationship type:"""
 
 BATCH_CLASSIFICATION_PROMPT = """You are classifying relationships in a knowledge graph. A NEW memory has been added, and it is similar to several EXISTING memories. For each pair, reason about the relationship and classify it.
 
-IMPORTANT: You must NEVER return "supersedes". Only a human can decide that one memory supersedes another. If two memories conflict, use "contradicts" — the user will decide how to resolve it.
+IMPORTANT: You must NEVER return "supersedes". Only a human can decide that one memory supersedes another.
 
 Relationship types:
-- relates_to: General topical similarity, no direct logical dependency between the two
+- relates_to: General topical similarity, related topics, or components of the same system. USE THIS for code descriptions of different files in the same project - they complement each other, they don't contradict. MOST PAIRS SHOULD BE THIS.
 - derived_from: The NEW memory was built from, implements, or extends the EXISTING memory
-- contradicts: The NEW and EXISTING memories make conflicting or incompatible claims about the same thing. This includes cases where one appears to update, replace, or override the other — always use contradicts, never supersedes.
-- exemplifies: One memory describes a specific real-world event or instance that illustrates the abstract concept in the other. One is a rule; the other is a case where the rule applied.
-- refines: The NEW memory is an updated, more precise version of the SAME statement in the EXISTING memory. Both say the same thing, but one adds exact numbers, names, or details that the other left vague.
+- contradicts: The NEW and EXISTING memories make DIRECTLY CONFLICTING factual claims. Example: "Port is 8080" vs "Port is 3000". Do NOT use this for code descriptions of different files - different files relate_to each other.
+- exemplifies: One memory describes a specific real-world event that illustrates an abstract concept in the other.
+- refines: The NEW memory is a more precise version of the SAME statement in the EXISTING memory.
+
+BIAS TOWARD relates_to: When in doubt, use relates_to. Most similar memories are related, not contradictory. Code descriptions of different files should almost ALWAYS be relates_to.
 
 NEW MEMORY: "{new_subject}"
 
 EXISTING MEMORIES:
 {existing_list}
 
-For EACH existing memory, reason about the relationship, then output your classification.
-Use this EXACT format for each (one per line, pipe-delimited):
+For EACH existing memory, output classification. Format (one per line):
 ID|TYPE
 
-Example output:
-42|relates_to
-17|derived_from
-93|contradicts
-
-Output your classifications now:"""
+Output:"""
 
 
 # Module-level cache for detected classification model

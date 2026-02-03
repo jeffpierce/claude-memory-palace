@@ -22,6 +22,9 @@ from .supersede import register_supersede
 from .graph import register_graph
 from .code_remember import register_code_remember
 from .code_recall import register_code_recall
+from .audit import register_audit
+from .batch_archive import register_batch_archive
+from .reembed import register_reembed
 
 
 def register_all_tools(mcp):
@@ -49,6 +52,10 @@ def register_all_tools(mcp):
     # Code retrieval
     register_code_remember(mcp)
     register_code_recall(mcp)
+    # Maintenance
+    register_audit(mcp)
+    register_batch_archive(mcp)
+    register_reembed(mcp)
 
 
 __all__ = ["register_all_tools"]
