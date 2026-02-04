@@ -13,7 +13,8 @@ def register_get_memory(mcp):
     async def memory_get(
         memory_ids: Union[int, List[int]],
         detail_level: str = "verbose",
-        synthesize: bool = False
+        synthesize: bool = False,
+        include_graph: bool = True
     ) -> dict[str, Any]:
         """
         Retrieve one or more memories by their IDs.
@@ -32,11 +33,13 @@ def register_get_memory(mcp):
             detail_level: "summary" for condensed, "verbose" for full content (default: verbose)
             synthesize: If True, use LLM to synthesize multiple memories into natural language summary.
                        Skipped for single memory (pointless). Default: False (returns raw memory objects).
+            include_graph: Include depth-1 graph context for all retrieved memories (default True)
 
         Returns:
-            For single ID: {"memory": dict} or {"error": str} if not found
-            For multiple IDs (synthesize=False): {"memories": list[dict], "count": int, "not_found": list[int]}
-            For multiple IDs (synthesize=True): {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int]}
+            For single ID: {"memory": dict, "graph_context": dict (optional)} or {"error": str} if not found
+            For multiple IDs (synthesize=False): {"memories": list[dict], "count": int, "not_found": list[int], "graph_context": dict (optional)}
+            For multiple IDs (synthesize=True): {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int], "graph_context": dict (optional)}
+            graph_context format: {"memory_id": {"outgoing": [...], "incoming": [...]}, ...}
         """
         # Normalize to list
         if isinstance(memory_ids, int):
@@ -48,11 +51,11 @@ def register_get_memory(mcp):
 
         # Single memory: use simple fetch (synthesis doesn't apply)
         if single_mode:
-            result = get_memory_by_id(ids[0], detail_level=detail_level)
+            result = get_memory_by_id(ids[0], detail_level=detail_level, include_graph=include_graph)
             if result:
-                return {"memory": result}
+                return result  # Already has {"memory": ..., "graph_context": ...} format
             else:
                 return {"error": f"Memory {ids[0]} not found"}
 
         # Multiple memories: use batch fetch with optional synthesis
-        return get_memories_by_ids(ids, detail_level=detail_level, synthesize=synthesize)
+        return get_memories_by_ids(ids, detail_level=detail_level, synthesize=synthesize, include_graph=include_graph)

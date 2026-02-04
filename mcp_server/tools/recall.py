@@ -21,6 +21,8 @@ def register_recall(mcp):
         limit: int = 20,
         detail_level: str = "summary",
         synthesize: bool = True,
+        include_graph: bool = True,
+        graph_top_n: int = 5,
         weight_similarity: Optional[float] = None,
         weight_access: Optional[float] = None,
         weight_centrality: Optional[float] = None
@@ -53,15 +55,18 @@ def register_recall(mcp):
             limit: Maximum memories to return (default 20)
             detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=True)
             synthesize: If True (default), use local LLM to synthesize results. If False, return raw memory objects with full content for cloud AI to process.
+            include_graph: Include depth-1 graph context for top N results (default True)
+            graph_top_n: Number of top results to fetch graph context for (default 5)
             weight_similarity: Override weight for semantic similarity (default 0.7, range 0-1)
             weight_access: Override weight for access count (default 0.15, range 0-1)
             weight_centrality: Override weight for graph centrality (default 0.15, range 0-1)
 
         Returns:
             Dictionary with format depending on synthesize parameter:
-            - synthesize=True: {"summary": str, "count": int, "search_method": str, "memory_ids": list}
-            - synthesize=False: {"memories": list[dict], "count": int, "search_method": str}
+            - synthesize=True: {"summary": str, "count": int, "search_method": str, "memory_ids": list, "graph_context": dict (optional)}
+            - synthesize=False: {"memories": list[dict], "count": int, "search_method": str, "graph_context": dict (optional)}
               Raw mode always returns verbose content with similarity_score when available.
+              graph_context format: {"memory_id": {"outgoing": [...], "incoming": [...]}, ...}
         """
         # Set weights as environment variables if provided (for this call only)
         import os
@@ -87,7 +92,9 @@ def register_recall(mcp):
                 include_archived=include_archived,
                 limit=limit,
                 detail_level=detail_level,
-                synthesize=synthesize
+                synthesize=synthesize,
+                include_graph=include_graph,
+                graph_top_n=graph_top_n
             )
         finally:
             # Restore old environment
