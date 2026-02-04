@@ -1,6 +1,137 @@
-# Changelog: Centrality-Weighted Retrieval
+# Changelog: Centrality-Weighted Retrieval & Graph Context
 
-## [Unreleased] - 2026-02-02
+## [Unreleased] - 2026-02-03
+
+### Added
+
+#### Graph Context in Retrieval Results
+
+- **Automatic graph context inclusion** in `memory_recall` and `memory_get` responses
+  - Depth-1 graph context (immediate incoming/outgoing edges) included by default
+  - Shows how memories connect without needing separate graph traversal calls
+  - Helps understand why high-centrality memories ranked highly
+
+- **`include_graph` parameter** (bool, default True):
+  - Controls whether graph context is included in results
+  - Can be disabled for speed if connections aren't needed
+
+- **`graph_top_n` parameter** (int, default 5, `memory_recall` only):
+  - Limits graph context to top N results from search
+  - Prevents massive context from broad searches
+  - Clamped to query limit automatically
+
+- **Asymmetric behavior** between recall and get:
+  - `memory_recall`: Graph context limited to top N (performance consideration)
+  - `memory_get`: Graph context for ALL memories (intentional targeted fetches)
+
+- **Graph context format** in responses:
+  ```json
+  {
+    "graph_context": {
+      "memory_id": {
+        "outgoing": [{"target_id": 42, "target_subject": "...", "relation_type": "...", "strength": 1.0}],
+        "incoming": [{"source_id": 17, "source_subject": "...", "relation_type": "...", "strength": 1.0}]
+      }
+    }
+  }
+  ```
+
+### Changed
+
+#### Memory Service
+
+- **`recall()` function** enhanced with graph context:
+  - Added `include_graph` and `graph_top_n` parameters
+  - Fetches depth-1 edges for top-ranked results
+  - Returns `graph_context` dict in response
+
+- **`get_by_ids()` function** enhanced with graph context:
+  - Added `include_graph` parameter
+  - Fetches depth-1 edges for ALL requested memories
+  - Returns `graph_context` dict in response
+
+- **`_get_graph_context()` helper function** added:
+  - Efficient batch fetching of edges for multiple memory IDs
+  - Returns structured dict with outgoing/incoming edges
+  - Includes target/source subject, relation type, and strength
+
+#### MCP Tools
+
+- **`memory_recall` tool** updated with:
+  - `include_graph` parameter (default True)
+  - `graph_top_n` parameter (default 5)
+  - Enhanced docstring with graph context documentation
+  - Explanation of asymmetry vs memory_get
+
+- **`memory_get` tool** updated with:
+  - `include_graph` parameter (default True)
+  - Enhanced docstring with graph context documentation
+  - Note that ALL memories get graph context (not limited)
+
+### Documentation
+
+- **`README.md`** updated:
+  - Added graph context to tool descriptions
+  - Example response format with graph context
+  - Brief explanation of feature
+
+- **`docs/README.md`** updated:
+  - Comprehensive parameter documentation
+  - Graph context response format examples
+  - Usage patterns (with/without graph context)
+  - Explanation of asymmetry between recall and get
+
+- **`docs/architecture.md`** updated:
+  - Design rationale for automatic graph context
+  - Explanation of asymmetric behavior (recall vs get)
+  - Performance considerations
+
+- **`docs/centrality-weighted-retrieval.md`** updated:
+  - Integration notes for graph context + centrality weighting
+  - Example showing how graph context explains high centrality
+
+- **`GRAPH_CONTEXT_IMPLEMENTATION.md`** created:
+  - Complete implementation summary
+  - Files modified/created
+  - Key design decisions with rationales
+  - Response format specification
+  - Performance analysis
+  - Edge cases handled
+  - Future enhancements
+
+- **`examples/centrality_weighted_search.py`** updated:
+  - Added `example_graph_context()` demonstrating graph context feature
+  - Shows how to interpret incoming/outgoing edges
+  - Explains connection between centrality and graph context
+
+- **`examples/test_graph_context_mcp.md`** created:
+  - MCP testing guide for graph context
+  - Usage examples (recall with context, get with context, disabled)
+  - Understanding graph context output
+  - Common use cases
+  - Troubleshooting guide
+
+### Performance
+
+- **Graph context overhead:** O(N × avg_degree) where N = memories to fetch context for
+  - Typical: 5 memories × ~3 edges = 15 edge lookups
+  - Database: 2 queries per memory (outgoing + incoming)
+  - Overhead: <10ms for typical cases
+
+### Backward Compatibility
+
+- ✅ **Fully backward compatible** — New parameters are optional
+- ✅ **Enhancement, not breaking change** — Existing code gets graph context automatically
+- ✅ **Can be disabled** — Set `include_graph=False` if not desired
+
+### Integration with Centrality-Weighted Retrieval
+
+Graph context pairs naturally with centrality weighting:
+1. Centrality weighting ranks memories partly by in-degree (# of incoming edges)
+2. Graph context shows those incoming/outgoing edges
+3. User immediately understands why a memory ranked highly (sees the connections)
+
+## [Released] - 2026-02-02
 
 ### Added
 

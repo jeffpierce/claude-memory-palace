@@ -138,6 +138,48 @@ def example_pure_semantic():
         print()
 
 
+def example_graph_context():
+    """Example: Graph context shows why high-centrality memories rank highly."""
+    print("=" * 60)
+    print("Example 5: Graph Context Integration")
+    print("=" * 60)
+    print("Default weights with graph context enabled")
+    print()
+
+    result = recall(
+        query="embedding generation",
+        limit=5,
+        synthesize=False,
+        include_graph=True,
+        graph_top_n=3  # Only fetch context for top 3
+    )
+
+    print(f"Search method: {result['search_method']}")
+    print(f"Found {result['count']} memories")
+    print(f"Graph context included for top {len(result.get('graph_context', {}))} results\n")
+
+    for i, mem in enumerate(result['memories'][:5], 1):
+        print(f"{i}. [{mem['memory_type']}] {mem['subject']}")
+        print(f"   Access count: {mem['access_count']}")
+        if 'similarity_score' in mem:
+            print(f"   Similarity: {mem['similarity_score']:.3f}")
+
+        # Show graph context if available
+        mem_id = str(mem['id'])
+        if 'graph_context' in result and mem_id in result['graph_context']:
+            context = result['graph_context'][mem_id]
+            incoming_count = len(context.get('incoming', []))
+            outgoing_count = len(context.get('outgoing', []))
+            print(f"   Graph: {incoming_count} incoming, {outgoing_count} outgoing edges")
+
+            # Show a few incoming edges (explains high centrality)
+            if incoming_count > 0:
+                print(f"   Referenced by:")
+                for edge in context['incoming'][:3]:
+                    print(f"     - Memory #{edge['source_id']}: {edge['source_subject']} ({edge['relation_type']})")
+        print()
+
+
 if __name__ == "__main__":
     print()
     print("Centrality-Weighted Memory Search Examples")
@@ -148,6 +190,7 @@ if __name__ == "__main__":
         example_favor_access()
         example_favor_centrality()
         example_pure_semantic()
+        example_graph_context()
 
         print("=" * 60)
         print("All examples completed!")

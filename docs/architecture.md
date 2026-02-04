@@ -140,6 +140,40 @@ The AI doesn't need to ingest 500 files. It traverses the graph, pulling only wh
 
 Edges include metadata explaining *why* the connection exists, strength weights for traversal filtering, and directional semantics for accurate graph queries.
 
+### Automatic Graph Context in Retrieval
+
+**Status:** ✅ Shipping
+
+Both `memory_recall` and `memory_get` automatically include depth-1 graph context (immediate incoming/outgoing edges) by default. This eliminates the need for separate graph traversal calls in most cases.
+
+**Design rationale for asymmetric behavior:**
+
+- **`memory_recall`** limits graph context to the top N results (default 5, configurable via `graph_top_n`). Semantic searches can return many results, and fetching graph context for all of them would be expensive and likely unhelpful. The user cares most about understanding connections for the highest-ranked matches.
+
+- **`memory_get`** includes graph context for ALL requested memories. When fetching by ID, it's an intentional targeted operation — the user explicitly wants those specific memories and their full context. No limiting needed.
+
+This asymmetry optimizes for the common case: broad searches get focused graph context, targeted fetches get complete graph context.
+
+**Graph context format:**
+```json
+{
+  "graph_context": {
+    "42": {
+      "outgoing": [
+        {"target_id": 17, "target_subject": "JWT Architecture", "relation_type": "relates_to", "strength": 1.0}
+      ],
+      "incoming": [
+        {"source_id": 99, "source_subject": "Auth Decision", "relation_type": "derived_from", "strength": 1.0}
+      ]
+    }
+  }
+}
+```
+
+Both parameters are controllable:
+- `include_graph=false` disables graph context entirely (for speed)
+- `graph_top_n` (recall only) controls how many results get graph context
+
 ## The Handoff System: Decentralized Agent Coordination
 
 **Status:** ✅ Shipping (polling-based)

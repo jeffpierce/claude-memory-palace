@@ -82,6 +82,30 @@ memory_recall(
 
 Use this to experiment with different weightings for specific queries.
 
+### Graph Context Integration
+
+Both `memory_recall` and `memory_get` automatically include depth-1 graph context (immediate incoming/outgoing edges) in their responses. This enhances centrality-weighted retrieval by not just ranking hub memories higher, but also showing you *why* they're hubs.
+
+**Parameters:**
+
+- `include_graph` (bool, default `true`): Include graph context in results
+- `graph_top_n` (int, default 5, `memory_recall` only): Limit graph context to top N results
+
+**Example:**
+
+```python
+# Default: top 5 results get graph context
+result = memory_recall(query="authentication patterns", limit=20)
+
+# Access graph context
+for memory_id, context in result['graph_context'].items():
+    print(f"Memory {memory_id}:")
+    print(f"  Referenced by: {len(context['incoming'])} memories")
+    print(f"  References: {len(context['outgoing'])} memories")
+```
+
+**Why this matters:** A memory with high centrality (many incoming edges) might rank highly even if it's not the closest semantic match. The graph context shows you the connections that made it important, helping you understand the knowledge graph topology.
+
 ## Keyword Fallback Mode
 
 When semantic search is unavailable (no embeddings), the system falls back to keyword search with adjusted weighting:
