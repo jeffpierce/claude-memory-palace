@@ -67,14 +67,34 @@ Once configured with Claude Desktop, use natural language:
 | Tool | Description |
 |------|-------------|
 | `memory_remember` | Store a new memory |
-| `memory_recall` | Semantic search across memories (supports `synthesize` param) |
+| `memory_recall` | Semantic search across memories (supports `synthesize` param and graph context) |
 | `memory_forget` | Archive a memory |
 | `memory_reflect` | Extract memories from transcripts |
 | `memory_stats` | Memory system overview |
-| `memory_get` | Retrieve memories by ID (supports `synthesize` param) |
+| `memory_get` | Retrieve memories by ID (supports `synthesize` param and graph context) |
 | `memory_backfill_embeddings` | Generate embeddings for memories without them |
 
-Both `memory_recall` and `memory_get` support `synthesize=true/false` to control whether results are returned as raw objects or processed through the local LLM for natural language summaries.
+#### Result Enhancement Features
+
+Both `memory_recall` and `memory_get` support:
+
+- **`synthesize=true/false`** - Control whether results are returned as raw objects or processed through the local LLM for natural language summaries.
+
+- **`include_graph=true/false`** - Include depth-1 graph context (incoming/outgoing edges) in results. Default: `true`
+  - `memory_recall`: Graph context included for top N results (controlled by `graph_top_n`, default 5)
+  - `memory_get`: Graph context included for ALL retrieved memories (intentional targeted fetches)
+
+Graph context returns edge information showing how memories connect:
+```json
+{
+  "graph_context": {
+    "memory_id": {
+      "outgoing": [{"target_id": 42, "target_subject": "...", "relation_type": "relates_to", "strength": 1.0}],
+      "incoming": [{"source_id": 17, "source_subject": "...", "relation_type": "derived_from", "strength": 1.0}]
+    }
+  }
+}
+```
 
 ### Code Retrieval Tools
 

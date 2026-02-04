@@ -82,20 +82,56 @@ Once configured, Claude will have access to the following memory tools:
 | Tool | Description |
 |------|-------------|
 | `memory_remember` | Store a new memory |
-| `memory_recall` | Search memories using semantic search (supports `synthesize` param) |
+| `memory_recall` | Search memories using semantic search (supports `synthesize` and graph context) |
 | `memory_forget` | Archive a memory (soft delete) |
-| `memory_get` | Retrieve memories by ID (supports `synthesize` param) |
+| `memory_get` | Retrieve memories by ID (supports `synthesize` and graph context) |
 | `memory_stats` | Get overview of memory system |
 
-#### Synthesis Parameter
+#### Result Enhancement Parameters
 
-Both `memory_recall` and `memory_get` support a `synthesize` parameter:
+Both `memory_recall` and `memory_get` support enhanced result parameters:
+
+##### Synthesis Parameter
 
 - **`synthesize=false`** (default for `memory_get`): Returns raw memory objects with full content. Best when you need exact wording or are processing with a cloud AI that can handle the full context.
 
 - **`synthesize=true`** (default for `memory_recall`): Runs memories through the local LLM (Qwen) to produce a natural language summary. Reduces token usage but takes longer (~1-2 min for large memories).
 
 For `memory_get`, synthesis is skipped for single memories (pointless to summarize one thing).
+
+##### Graph Context Parameters
+
+- **`include_graph=bool`** (default `true`): Include depth-1 graph context (immediate incoming/outgoing edges) for retrieved memories. Helps understand how memories connect without needing separate graph traversal calls.
+
+- **`graph_top_n=int`** (default `5`, only for `memory_recall`): Number of top-ranked results to fetch graph context for. Clamped to the query limit. This prevents returning massive amounts of graph data for searches with many results.
+
+**Key difference:** `memory_recall` limits graph context to top N results (performance consideration for broad searches), while `memory_get` includes graph context for ALL requested memories (intentional targeted fetches where full context is desired).
+
+**Graph context format:**
+```json
+{
+  "graph_context": {
+    "memory_id": {
+      "outgoing": [
+        {
+          "target_id": 42,
+          "target_subject": "Related Memory",
+          "relation_type": "relates_to",
+          "strength": 1.0
+        }
+      ],
+      "incoming": [
+        {
+          "source_id": 17,
+          "source_subject": "Source Memory",
+          "relation_type": "derived_from",
+          "strength": 1.0
+        }
+      ]
+    }
+  }
+}
+```
 
 ### Reflection Tools
 
@@ -213,11 +249,28 @@ memory_graph(start_id=42, max_depth=2)  # BFS traversal up to 2 hops
 
 **Retrieving specific memories by ID:**
 ```
-# Raw (full content, fast)
+# Raw with graph context (default)
 memory_get(memory_ids=[167, 168, 169], synthesize=False)
+# Returns: {memories: [...], graph_context: {...}}
 
-# Synthesized (natural language summary, slower)
+# Synthesized with graph context
 memory_get(memory_ids=[167, 168, 169], synthesize=True)
+# Returns: {summary: "...", memory_ids: [...], graph_context: {...}}
+
+# Without graph context (faster, less context)
+memory_get(memory_ids=[167, 168, 169], include_graph=False)
+```
+
+**Searching with graph context awareness:**
+```
+# Default: returns top 5 results with their graph context
+memory_recall(query="API authentication approach")
+
+# Get more graph context (top 10 results)
+memory_recall(query="API authentication", limit=20, graph_top_n=10)
+
+# Disable graph context for speed
+memory_recall(query="API authentication", include_graph=False)
 ```
 
 **Reflecting on transcripts:**
