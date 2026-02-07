@@ -4,12 +4,14 @@ Graph traversal tool for Claude Memory Palace MCP server.
 from typing import Any, List, Optional
 
 from memory_palace.services import traverse_graph, get_relationship_types
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_graph(mcp):
     """Register the memory_graph tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_graph(
         start_id: int,
         max_depth: int = 2,
@@ -17,7 +19,8 @@ def register_graph(mcp):
         direction: str = "outgoing",
         min_strength: float = 0.0,
         include_archived: bool = False,
-        detail_level: str = "summary"
+        detail_level: str = "summary",
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Traverse the memory knowledge graph from a starting point.
@@ -56,7 +59,8 @@ def register_graph(mcp):
         )
 
     @mcp.tool()
-    async def memory_relationship_types() -> dict[str, Any]:
+    @toon_response
+    async def memory_relationship_types(toon: Optional[bool] = None) -> dict[str, Any]:
         """
         Get information about available relationship types.
 

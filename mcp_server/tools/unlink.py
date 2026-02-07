@@ -4,16 +4,19 @@ Unlink tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services import unlink_memories
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_unlink(mcp):
     """Register the memory_unlink tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_unlink(
         source_id: int,
         target_id: int,
-        relation_type: Optional[str] = None
+        relation_type: Optional[str] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Remove relationship edge(s) between two memories.

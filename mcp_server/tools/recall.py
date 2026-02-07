@@ -4,12 +4,14 @@ Recall tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services import recall
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_recall(mcp):
     """Register the recall tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_recall(
         query: str,
         instance_id: Optional[str] = None,
@@ -23,9 +25,11 @@ def register_recall(mcp):
         synthesize: bool = True,
         include_graph: bool = True,
         graph_top_n: int = 5,
+        graph_depth: int = 1,
         weight_similarity: Optional[float] = None,
         weight_access: Optional[float] = None,
-        weight_centrality: Optional[float] = None
+        weight_centrality: Optional[float] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Search memories using semantic search (with keyword fallback).
@@ -55,8 +59,9 @@ def register_recall(mcp):
             limit: Maximum memories to return (default 20)
             detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=True)
             synthesize: If True (default), use local LLM to synthesize results. If False, return raw memory objects with full content for cloud AI to process.
-            include_graph: Include depth-1 graph context for top N results (default True)
+            include_graph: Include graph context for top N results (default True)
             graph_top_n: Number of top results to fetch graph context for (default 5)
+            graph_depth: How many hops to follow in graph context (1-3, default 1)
             weight_similarity: Override weight for semantic similarity (default 0.7, range 0-1)
             weight_access: Override weight for access count (default 0.15, range 0-1)
             weight_centrality: Override weight for graph centrality (default 0.15, range 0-1)
@@ -66,7 +71,7 @@ def register_recall(mcp):
             - synthesize=True: {"summary": str, "count": int, "search_method": str, "memory_ids": list, "graph_context": dict (optional)}
             - synthesize=False: {"memories": list[dict], "count": int, "search_method": str, "graph_context": dict (optional)}
               Raw mode always returns verbose content with similarity_score when available.
-              graph_context format: {"memory_id": {"outgoing": [...], "incoming": [...]}, ...}
+              graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
         """
         # Set weights as environment variables if provided (for this call only)
         import os
@@ -94,7 +99,8 @@ def register_recall(mcp):
                 detail_level=detail_level,
                 synthesize=synthesize,
                 include_graph=include_graph,
-                graph_top_n=graph_top_n
+                graph_top_n=graph_top_n,
+                graph_depth=graph_depth
             )
         finally:
             # Restore old environment

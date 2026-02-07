@@ -4,17 +4,20 @@ Reflect tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services import reflect
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_reflect(mcp):
     """Register the reflect tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_reflect(
         instance_id: str,
         transcript_path: str,
         session_id: Optional[str] = None,
-        dry_run: bool = False
+        dry_run: bool = False,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Process a conversation transcript and extract memories worth keeping.

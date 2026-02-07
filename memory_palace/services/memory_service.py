@@ -49,86 +49,76 @@ def _get_retrieval_weights() -> Tuple[float, float, float]:
     return alpha, beta, gamma
 
 
-def _get_graph_context_for_memories(db, memories: List[Memory]) -> Dict[str, Any]:
+def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int = 1) -> Dict[str, Any]:
     """
-    Fetch depth-1 graph context for a list of memories.
+    Fetch deduplicated graph context for a list of memories using BFS frontier expansion.
+
+    Uses adjacency list representation: nodes emitted once, edges reference IDs only.
+    Supports depth-1 (immediate connections) or depth-2+ (follow edges from discovered nodes).
 
     Args:
         db: Database session
         memories: List of Memory objects to fetch graph context for
+        max_depth: How many hops to follow (1 = immediate edges, 2 = edges of edges, etc.)
 
     Returns:
-        Dict mapping memory_id -> {"outgoing": [...], "incoming": [...]}
+        {"nodes": {id: subject, ...}, "edges": [{source, target, type, strength}, ...]}
+        Returns {} if no edges found.
     """
     if not memories:
         return {}
 
-    memory_ids = [m.id for m in memories]
+    # Clamp depth to sensible range
+    max_depth = max(1, min(max_depth, 3))
 
-    # Batch fetch all edges for these memories
-    outgoing_edges = db.query(MemoryEdge).filter(MemoryEdge.source_id.in_(memory_ids)).all()
-    incoming_edges = db.query(MemoryEdge).filter(MemoryEdge.target_id.in_(memory_ids)).all()
+    nodes: Dict[int, str] = {}  # id -> subject (dedup registry)
+    edges: List[Dict[str, Any]] = []  # flat edge list
+    seen_edges: set = set()  # (source_id, target_id, relation_type) for dedup
 
-    # Collect all referenced memory IDs for batch subject lookup
-    referenced_ids = set()
-    for edge in outgoing_edges:
-        referenced_ids.add(edge.target_id)
-    for edge in incoming_edges:
-        referenced_ids.add(edge.source_id)
+    # Seed nodes from the requested memories
+    frontier_ids = set(m.id for m in memories)
+    for m in memories:
+        nodes[m.id] = m.subject or "(no subject)"
 
-    # Batch fetch all referenced memories for subject lookup
-    subject_lookup = {}
-    if referenced_ids:
-        referenced_memories = db.query(Memory.id, Memory.subject).filter(
-            Memory.id.in_(referenced_ids)
-        ).all()
-        subject_lookup = {m.id: m.subject or "(no subject)" for m in referenced_memories}
+    for depth in range(max_depth):
+        if not frontier_ids:
+            break  # No new nodes to explore
 
-    # Group edges by memory ID for O(1) lookups (instead of O(N) filtering per memory)
-    outgoing_by_source = {}
-    for e in outgoing_edges:
-        outgoing_by_source.setdefault(e.source_id, []).append(e)
+        # Batch fetch outgoing + incoming edges for current frontier
+        outgoing = db.query(MemoryEdge).filter(MemoryEdge.source_id.in_(frontier_ids)).all()
+        incoming = db.query(MemoryEdge).filter(MemoryEdge.target_id.in_(frontier_ids)).all()
 
-    incoming_by_target = {}
-    for e in incoming_edges:
-        incoming_by_target.setdefault(e.target_id, []).append(e)
+        next_frontier: set = set()
+        new_referenced_ids: set = set()
 
-    # Build graph context
-    graph_context = {}
-    for memory in memories:
-        memory_context = {}
+        for e in outgoing + incoming:
+            edge_key = (e.source_id, e.target_id, e.relation_type)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            edges.append({
+                "source": e.source_id,
+                "target": e.target_id,
+                "type": e.relation_type,
+                "strength": round(e.strength, 4)
+            })
+            # Track new nodes we haven't seen
+            for nid in (e.source_id, e.target_id):
+                if nid not in nodes:
+                    new_referenced_ids.add(nid)
+                    next_frontier.add(nid)
 
-        # Outgoing edges for this memory (O(1) lookup)
-        mem_outgoing = outgoing_by_source.get(memory.id, [])
-        if mem_outgoing:
-            memory_context["outgoing"] = [
-                {
-                    "target_id": e.target_id,
-                    "target_subject": subject_lookup.get(e.target_id, "(unknown)"),
-                    "relation_type": e.relation_type,
-                    "strength": round(e.strength, 4)
-                }
-                for e in mem_outgoing
-            ]
+        # Batch fetch subjects for newly discovered nodes
+        if new_referenced_ids:
+            refs = db.query(Memory.id, Memory.subject).filter(
+                Memory.id.in_(new_referenced_ids)
+            ).all()
+            for ref in refs:
+                nodes[ref.id] = ref.subject or "(no subject)"
 
-        # Incoming edges for this memory (O(1) lookup)
-        mem_incoming = incoming_by_target.get(memory.id, [])
-        if mem_incoming:
-            memory_context["incoming"] = [
-                {
-                    "source_id": e.source_id,
-                    "source_subject": subject_lookup.get(e.source_id, "(unknown)"),
-                    "relation_type": e.relation_type,
-                    "strength": round(e.strength, 4)
-                }
-                for e in mem_incoming
-            ]
+        frontier_ids = next_frontier
 
-        # Only add to graph_context if there are edges
-        if memory_context:
-            graph_context[str(memory.id)] = memory_context
-
-    return graph_context
+    return {"nodes": nodes, "edges": edges} if edges else {}
 
 
 def _compute_in_degree_centrality(db, memory_ids: List[int]) -> Dict[int, float]:
@@ -591,7 +581,8 @@ def recall(
     detail_level: str = "summary",
     synthesize: bool = True,
     include_graph: bool = True,
-    graph_top_n: int = 5
+    graph_top_n: int = 5,
+    graph_depth: int = 1
 ) -> Dict[str, Any]:
     """
     Search memories using semantic search (with keyword fallback).
@@ -607,10 +598,11 @@ def recall(
         limit: Maximum memories to return (default 20)
         detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=True)
         synthesize: If True (default), use LLM to synthesize. If False, return raw memory objects with full content.
-        include_graph: Include depth-1 graph context for top N results (default True)
+        include_graph: Include graph context for top N results (default True)
         graph_top_n: Number of top results to fetch graph context for (default 5).
             NOTE: This limits graph context for performance - searches may return many results,
             but only the top N are enriched with relationship edges.
+        graph_depth: How many hops to follow in graph context (1-3, default 1)
 
     Returns:
         Dictionary with one of three formats:
@@ -618,7 +610,7 @@ def recall(
         - synthesize=True + LLM unavailable: {"summary": str (text list), "count": int, "search_method": str, "memory_ids": list, "graph_context": dict (optional)}
         - synthesize=False: {"memories": list[dict], "count": int, "search_method": str, "graph_context": dict (optional)}
           Note: Raw mode always returns verbose content regardless of detail_level parameter.
-          Note: graph_context is only included if include_graph=True
+          Note: graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
     """
     db = get_session()
     try:
@@ -833,7 +825,7 @@ def recall(
 
         # Fetch graph context if requested
         graph_context = _get_graph_context_for_memories(
-            db, memories[:graph_top_n]
+            db, memories[:graph_top_n], max_depth=graph_depth
         ) if include_graph and memories else {}
 
         # Return raw memories if synthesize=False
@@ -1066,7 +1058,8 @@ def backfill_embeddings() -> Dict[str, Any]:
 def get_memory_by_id(
     memory_id: int,
     detail_level: str = "verbose",
-    include_graph: bool = True
+    include_graph: bool = True,
+    graph_depth: int = 1
 ) -> Optional[Dict[str, Any]]:
     """
     Get a single memory by ID.
@@ -1074,10 +1067,12 @@ def get_memory_by_id(
     Args:
         memory_id: ID of the memory to retrieve
         detail_level: "summary" for condensed, "verbose" for full content
-        include_graph: Include depth-1 graph context (default True)
+        include_graph: Include graph context (default True)
+        graph_depth: How many hops to follow in graph context (1-3, default 1)
 
     Returns:
         {"memory": dict, "graph_context": dict (optional)} if found, None if not found
+        graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
     """
     db = get_session()
     try:
@@ -1094,7 +1089,7 @@ def get_memory_by_id(
         result = {"memory": memory.to_dict(detail_level=detail_level)}
 
         # Fetch graph context if requested
-        graph_context = _get_graph_context_for_memories(db, [memory]) if include_graph else {}
+        graph_context = _get_graph_context_for_memories(db, [memory], max_depth=graph_depth) if include_graph else {}
         if graph_context:
             result["graph_context"] = graph_context
 
@@ -1107,7 +1102,8 @@ def get_memories_by_ids(
     memory_ids: List[int],
     detail_level: str = "verbose",
     synthesize: bool = False,
-    include_graph: bool = True
+    include_graph: bool = True,
+    graph_depth: int = 1
 ) -> Dict[str, Any]:
     """
     Get multiple memories by ID, with optional LLM synthesis.
@@ -1116,15 +1112,16 @@ def get_memories_by_ids(
         memory_ids: List of memory IDs to retrieve
         detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=False)
         synthesize: If True, use LLM to synthesize memories into natural language summary
-        include_graph: Include depth-1 graph context for ALL found memories (default True).
+        include_graph: Include graph context for ALL found memories (default True).
             NOTE: Unlike recall(), this fetches graph context for ALL found memories, not just
             a top-N subset. This is intentional - these are targeted fetches where the user
             wants full context for specific memories.
+        graph_depth: How many hops to follow in graph context (1-3, default 1)
 
     Returns:
         If synthesize=False: {"memories": list[dict], "count": int, "not_found": list[int], "graph_context": dict (optional)}
         If synthesize=True: {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int], "graph_context": dict (optional)}
-        graph_context format: {"memory_id": {"outgoing": [...], "incoming": [...]}, ...}
+        graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
     """
     db = get_session()
     try:
@@ -1142,7 +1139,7 @@ def get_memories_by_ids(
         db.commit()
 
         # Fetch graph context if requested (for ALL found memories)
-        graph_context = _get_graph_context_for_memories(db, memories) if include_graph and memories else {}
+        graph_context = _get_graph_context_for_memories(db, memories, max_depth=graph_depth) if include_graph and memories else {}
 
         # Skip synthesis for single memory (pointless) or empty results
         if synthesize and len(memories) > 1:

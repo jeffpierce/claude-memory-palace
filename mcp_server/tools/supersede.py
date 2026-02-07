@@ -4,17 +4,20 @@ Supersede tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services import supersede_memory
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_supersede(mcp):
     """Register the memory_supersede tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_supersede(
         new_memory_id: int,
         old_memory_id: int,
         archive_old: bool = True,
-        created_by: Optional[str] = None
+        created_by: Optional[str] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Mark a new memory as superseding an old one.

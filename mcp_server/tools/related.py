@@ -4,18 +4,21 @@ Related tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services import get_related_memories
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_related(mcp):
     """Register the memory_related tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_related(
         memory_id: int,
         relation_type: Optional[str] = None,
         direction: str = "both",
         include_memory_content: bool = True,
-        detail_level: str = "summary"
+        detail_level: str = "summary",
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Get memories related to a given memory via edges.

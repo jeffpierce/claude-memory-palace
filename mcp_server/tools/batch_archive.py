@@ -4,12 +4,14 @@ Batch archive tool for Claude Memory Palace MCP server.
 from typing import Any, Optional, List
 
 from memory_palace.services.maintenance_service import batch_archive_memories
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_batch_archive(mcp):
     """Register the batch archive tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_batch_archive(
         older_than_days: Optional[int] = None,
         max_access_count: Optional[int] = None,
@@ -19,7 +21,8 @@ def register_batch_archive(mcp):
         centrality_protection: bool = True,
         min_centrality_threshold: int = 5,
         dry_run: bool = True,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Archive multiple memories matching criteria.

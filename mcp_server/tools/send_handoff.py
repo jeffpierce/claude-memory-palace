@@ -4,18 +4,21 @@ Send handoff tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services import send_handoff
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_send_handoff(mcp):
     """Register the send_handoff tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def handoff_send(
         from_instance: str,
         to_instance: str,
         message_type: str,
         content: str,
-        subject: Optional[str] = None
+        subject: Optional[str] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Send a message from one Claude instance to another.

@@ -4,12 +4,14 @@ Remember tool for Claude Memory Palace MCP server.
 from typing import Any, List, Optional
 
 from memory_palace.services import remember
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_remember(mcp):
     """Register the remember tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_remember(
         instance_id: str,
         memory_type: str,
@@ -23,7 +25,8 @@ def register_remember(mcp):
         source_context: Optional[str] = None,
         source_session_id: Optional[str] = None,
         supersedes_id: Optional[int] = None,
-        auto_link: Optional[bool] = None
+        auto_link: Optional[bool] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Store a new memory in the memory palace.
