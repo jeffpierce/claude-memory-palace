@@ -4,12 +4,14 @@ Link tool for Claude Memory Palace MCP server.
 from typing import Any, Dict, List, Optional
 
 from memory_palace.services import link_memories
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_link(mcp):
     """Register the memory_link tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_link(
         source_id: int,
         target_id: int,
@@ -17,7 +19,8 @@ def register_link(mcp):
         strength: float = 1.0,
         bidirectional: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
-        created_by: Optional[str] = None
+        created_by: Optional[str] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Create a relationship edge between two memories.

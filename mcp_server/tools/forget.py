@@ -4,15 +4,18 @@ Forget tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services import forget
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_forget(mcp):
     """Register the forget tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_forget(
         memory_id: int,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Archive a memory (soft delete).

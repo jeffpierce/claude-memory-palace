@@ -4,17 +4,20 @@ Code recall tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services.code_service import code_recall
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_code_recall(mcp):
     """Register the code_recall tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def code_recall_tool(
         query: str,
         project: Optional[str] = None,
         synthesize: bool = True,
-        limit: int = 5
+        limit: int = 5,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Search indexed code using natural language.

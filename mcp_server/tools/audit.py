@@ -4,12 +4,14 @@ Audit tool for Claude Memory Palace MCP server.
 from typing import Any, Optional
 
 from memory_palace.services.maintenance_service import audit_palace
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_audit(mcp):
     """Register the audit tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def memory_audit(
         check_duplicates: bool = True,
         check_stale: bool = True,
@@ -21,7 +23,8 @@ def register_audit(mcp):
         stale_centrality_threshold: int = 3,
         duplicate_threshold: float = 0.92,
         project: Optional[str] = None,
-        limit_per_category: int = 20
+        limit_per_category: int = 20,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Audit palace health and return actionable findings.

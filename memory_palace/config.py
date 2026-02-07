@@ -44,7 +44,10 @@ from memory_palace.config_v2 import (
     
     # Auto-link config
     get_auto_link_config,
-    
+
+    # TOON output config
+    is_toon_output_enabled,
+
     # Utilities
     ensure_data_dir,
     get_legacy_database_url,

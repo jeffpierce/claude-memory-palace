@@ -50,6 +50,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "classify_edges": True,  # Use LLM to classify edge types (vs all relates_to)
         "classification_model": None,  # Auto-detected; prefers small models for speed
     },
+    # MCP output format
+    "toon_output": True,  # Use TOON encoding for MCP responses (saves ~30% tokens)
     # Instance configuration
     "instances": ["default"],
 }
@@ -334,7 +336,7 @@ def is_synthesis_enabled() -> bool:
 def get_auto_link_config() -> Dict[str, Any]:
     """
     Get auto-linking configuration.
-    
+
     Returns:
         Dict with auto_link settings:
         - enabled: bool (default True)
@@ -356,6 +358,20 @@ def get_auto_link_config() -> Dict[str, Any]:
         "classify_edges": auto_link.get("classify_edges", True),
         "classification_model": auto_link.get("classification_model", None),
     }
+
+
+def is_toon_output_enabled() -> bool:
+    """
+    Check if TOON output encoding is enabled for MCP responses.
+
+    When True (default), MCP tool responses are TOON-encoded to save tokens.
+    When False, raw JSON/dict responses are returned.
+
+    Returns:
+        True if TOON encoding is enabled, False for raw JSON
+    """
+    config = load_config()
+    return config.get("toon_output", True)
 
 
 def ensure_data_dir() -> Path:

@@ -1,20 +1,23 @@
 """
 JSONL to TOON converter tool for Claude Memory Palace MCP server.
 """
-from typing import Any
+from typing import Any, Optional
 
 from memory_palace.services import jsonl_to_toon_chunks
+from mcp_server.toon_wrapper import toon_response
 
 
 def register_jsonl_to_toon(mcp):
     """Register the jsonl_to_toon tool with the MCP server."""
 
     @mcp.tool()
+    @toon_response
     async def convert_jsonl_to_toon(
         input_path: str,
         output_dir: str,
         mode: str = "aggressive",
-        chunk_tokens: int = 12500
+        chunk_tokens: int = 12500,
+        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
         Convert Claude JSONL transcript to chunked TOON files.
