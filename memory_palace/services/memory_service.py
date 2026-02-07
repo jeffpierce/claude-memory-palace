@@ -71,14 +71,14 @@ def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int =
     # Clamp depth to sensible range
     max_depth = max(1, min(max_depth, 3))
 
-    nodes: Dict[int, str] = {}  # id -> subject (dedup registry)
+    nodes: Dict[str, str] = {}  # "id" -> subject (dedup registry, string keys for TOON compat)
     edges: List[Dict[str, Any]] = []  # flat edge list
     seen_edges: set = set()  # (source_id, target_id, relation_type) for dedup
 
     # Seed nodes from the requested memories
     frontier_ids = set(m.id for m in memories)
     for m in memories:
-        nodes[m.id] = m.subject or "(no subject)"
+        nodes[str(m.id)] = m.subject or "(no subject)"
 
     for depth in range(max_depth):
         if not frontier_ids:
@@ -104,7 +104,7 @@ def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int =
             })
             # Track new nodes we haven't seen
             for nid in (e.source_id, e.target_id):
-                if nid not in nodes:
+                if str(nid) not in nodes:
                     new_referenced_ids.add(nid)
                     next_frontier.add(nid)
 
@@ -114,7 +114,7 @@ def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int =
                 Memory.id.in_(new_referenced_ids)
             ).all()
             for ref in refs:
-                nodes[ref.id] = ref.subject or "(no subject)"
+                nodes[str(ref.id)] = ref.subject or "(no subject)"
 
         frontier_ids = next_frontier
 

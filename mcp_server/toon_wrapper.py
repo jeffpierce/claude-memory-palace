@@ -10,20 +10,16 @@ from typing import Any, Callable, Dict
 from mcp.types import TextContent
 from memory_palace.config import is_toon_output_enabled
 
-# Lazy import toons to avoid import errors if not installed
+# Lazy import toons — fail loud if missing when enabled (12-factor: no silent degradation)
 _toon_encode = None
 
 
 def _get_toon_encoder():
-    """Lazy-load the TOON encoder."""
+    """Lazy-load the TOON encoder. Raises ImportError if toons is not installed."""
     global _toon_encode
     if _toon_encode is None:
-        try:
-            from toons import dumps as toon_encode
-            _toon_encode = toon_encode
-        except ImportError:
-            # If toons not installed, return identity function
-            _toon_encode = lambda x: x
+        from toons import dumps as toon_encode
+        _toon_encode = toon_encode
     return _toon_encode
 
 
@@ -60,16 +56,11 @@ def toon_response(func: Callable) -> Callable:
         result = await func(*args, **kwargs)
 
         # If toon encoding is enabled and result is a dict, encode it
+        # No try/except — if TOON encoding fails, that's a bug. Fail loud. (12-factor)
         if toon and isinstance(result, dict):
             encoder = _get_toon_encoder()
-            try:
-                encoded = encoder(result)
-                # Return as TextContent so MCP SDK accepts a string response
-                return [TextContent(type="text", text=encoded)]
-            except Exception as e:
-                # If TOON encoding fails, fall back to raw dict
-                print(f"Warning: TOON encoding failed: {e}")
-                return result
+            encoded = encoder(result)
+            return [TextContent(type="text", text=encoded)]
 
         return result
 
