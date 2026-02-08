@@ -100,7 +100,7 @@ def code_remember(
     Args:
         code_path: Path to the source file to index
         project: Project this code belongs to (e.g., "memory-palace")
-        instance_id: Which instance is indexing (e.g., "code", "desktop")
+        instance_id: Which instance is indexing (must be a configured instance)
         force: Re-index even if already indexed (default False)
     
     Returns:

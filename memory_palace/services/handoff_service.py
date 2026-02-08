@@ -1,7 +1,8 @@
 """
 Handoff service for inter-instance communication.
 
-Provides note-passing between Claude instances (desktop, code, web, etc.).
+Provides note-passing between Claude instances. Valid instances are configured
+in ~/.memory-palace/config.json under the "instances" key.
 """
 
 from datetime import datetime
@@ -22,7 +23,8 @@ def _get_valid_instances() -> List[str]:
     """
     Get valid instance IDs from config.
 
-    Returns configured instances plus "all" for broadcasts.
+    Returns the list configured in ~/.memory-palace/config.json.
+    The "all" broadcast target is handled separately in send/get functions.
     """
     return get_instances()
 
@@ -41,8 +43,8 @@ def send_handoff(
     notes for Code Claude, etc. Note-passing for distributed minds.
 
     Args:
-        from_instance: Which instance is sending (must be in configured instances)
-        to_instance: Who should receive it (configured instance or "all" for broadcast)
+        from_instance: Which instance is sending (must be a configured instance)
+        to_instance: Who should receive it (a configured instance or "all" for broadcast)
         message_type: Type of message:
             - "handoff": Task handoff between instances
             - "status": Status update
@@ -63,11 +65,11 @@ def send_handoff(
 
         # Validate from_instance - can't send FROM "all"
         if from_instance not in valid_instances:
-            return {"error": f"Invalid from_instance '{from_instance}'. Must be one of: {valid_instances}"}
+            return {"error": f"Invalid from_instance '{from_instance}'. Must be one of the configured instances: {valid_instances}. Configure in ~/.memory-palace/config.json"}
 
         # Validate to_instance - can send TO "all"
         if to_instance not in valid_to_instances:
-            return {"error": f"Invalid to_instance '{to_instance}'. Must be one of: {valid_to_instances}"}
+            return {"error": f"Invalid to_instance '{to_instance}'. Must be one of the configured instances: {valid_to_instances}. Configure in ~/.memory-palace/config.json"}
 
         # Validate message type
         if message_type not in VALID_MESSAGE_TYPES:
@@ -99,7 +101,7 @@ def get_handoffs(
     Get messages for an instance.
 
     Args:
-        for_instance: Which instance is checking (must be in configured instances)
+        for_instance: Which instance is checking (must be a configured instance)
         unread_only: Only return unread messages (default True)
         message_type: Filter by type (optional)
         limit: Maximum messages to return
@@ -113,7 +115,7 @@ def get_handoffs(
         valid_instances = _get_valid_instances()
 
         if for_instance not in valid_instances:
-            return {"error": f"Invalid for_instance '{for_instance}'. Must be one of: {valid_instances}"}
+            return {"error": f"Invalid for_instance '{for_instance}'. Must be one of the configured instances: {valid_instances}. Configure in ~/.memory-palace/config.json"}
 
         # Get messages addressed to this instance OR to "all"
         query = session.query(HandoffMessage).filter(
@@ -151,7 +153,7 @@ def mark_handoff_read(
 
     Args:
         message_id: ID of the message to mark
-        read_by: Which instance read it (must be in configured instances)
+        read_by: Which instance read it (must be a configured instance)
 
     Returns:
         Compact confirmation string
@@ -161,7 +163,7 @@ def mark_handoff_read(
         valid_instances = _get_valid_instances()
 
         if read_by not in valid_instances:
-            return {"error": f"Invalid read_by '{read_by}'. Must be one of: {valid_instances}"}
+            return {"error": f"Invalid read_by '{read_by}'. Must be one of the configured instances: {valid_instances}. Configure in ~/.memory-palace/config.json"}
 
         message = session.query(HandoffMessage).filter(
             HandoffMessage.id == message_id

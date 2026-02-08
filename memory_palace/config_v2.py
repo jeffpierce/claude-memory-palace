@@ -53,6 +53,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # MCP output format
     "toon_output": True,  # Use TOON encoding for MCP responses (saves ~30% tokens)
     # Instance configuration
+    # Instances represent different Claude contexts (e.g., "prime", "code", "desktop").
+    # Configure your actual instances in ~/.memory-palace/config.json — this default
+    # is only a fallback. The MEMORY_PALACE_INSTANCE_ID env var auto-adds to the list.
     "instances": ["default"],
 }
 
@@ -302,7 +305,16 @@ def get_llm_model() -> Optional[str]:
 
 
 def get_instances() -> List[str]:
-    """Get the list of configured instance IDs."""
+    """
+    Get the list of configured instance IDs.
+
+    Instances are configured in ~/.memory-palace/config.json under the
+    "instances" key. The MEMORY_PALACE_INSTANCE_ID env var automatically
+    appends to this list if not already present (see load_config()).
+
+    Returns:
+        List of valid instance ID strings (e.g., ["prime", "code", "desktop", ...])
+    """
     return load_config().get("instances", DEFAULT_CONFIG["instances"])
 
 

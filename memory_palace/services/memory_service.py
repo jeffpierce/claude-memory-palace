@@ -14,7 +14,7 @@ from sqlalchemy import func, or_, String
 from memory_palace.models import Memory, MemoryEdge
 from memory_palace.database import get_session
 from memory_palace.embeddings import get_embedding, cosine_similarity
-from memory_palace.config_v2 import get_auto_link_config, is_postgres
+from memory_palace.config_v2 import get_auto_link_config, get_instances, is_postgres
 from memory_palace.llm import classify_edge_type, classify_edge_types_batch
 
 
@@ -227,7 +227,9 @@ def remember(
     Store a new memory in the memory palace.
 
     Args:
-        instance_id: Which instance is storing this (e.g., "desktop", "code", "web")
+        instance_id: Which instance is storing this (must be a configured instance in
+            ~/.memory-palace/config.json). Unconfigured instances trigger a warning
+            but are still accepted for backward compatibility.
         memory_type: Type of memory (open-ended - use existing types or create new ones)
         content: The actual memory content
         subject: What/who this memory is about (optional but recommended)
@@ -244,6 +246,15 @@ def remember(
     Returns:
         Dict with id, subject, embedded status, and links_created (if any)
     """
+    # Warn (not error) if instance_id isn't in configured list
+    instance_warning = None
+    configured_instances = get_instances()
+    if instance_id not in configured_instances:
+        instance_warning = (
+            f"Instance '{instance_id}' is not in configured instances {configured_instances}. "
+            f"Memory stored anyway, but consider adding it to ~/.memory-palace/config.json"
+        )
+
     db = get_session()
     try:
         # memory_type is open-ended - use existing types when they fit, create new ones when needed
@@ -440,6 +451,9 @@ def remember(
                 "Tagged with 'embedding_failed' for easy discovery."
             )
         
+        if instance_warning:
+            result["instance_warning"] = instance_warning
+
         if links_created:
             result["links_created"] = links_created
         

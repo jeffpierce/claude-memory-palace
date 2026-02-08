@@ -2,7 +2,7 @@
 Claude Memory Palace - Persistent memory system for Claude instances.
 
 Provides semantic search over memories and handoff messaging between
-Claude instances (desktop, code, web).
+Claude instances. Instances are configured in ~/.memory-palace/config.json.
 """
 
 __version__ = "0.1.0"
