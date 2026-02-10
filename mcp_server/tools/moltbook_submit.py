@@ -37,7 +37,7 @@ def register_moltbook_submit(mcp):
         Interlocks (checked in order):
         1. Session guard — prevents retry loops within a session
         2. Content hash dedup — prevents exact duplicate content
-        3. Word count gate — posts max 600 words, comments max 300
+        3. Word count gate — posts max 1000 words, comments max 300
         4. Similarity check — catches near-duplicate rewording
         5. Rate limit — 30min between posts, 20sec between comments
         6. QC gate — requires valid, unexpired, unconsumed QC token
