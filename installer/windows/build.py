@@ -70,7 +70,7 @@ def build():
     # Write the entry point
     entry.write_text('''#!/usr/bin/env python3
 """
-PyInstaller entry point — extracts bundled package and launches GUI.
+PyInstaller entry point - extracts bundled package and launches GUI.
 """
 import sys
 import os
@@ -124,13 +124,13 @@ def main():
     sys.path.insert(0, str(install_dir))
 
     from gui.app import InstallerApp
-    app = InstallerApp(title="Memory Palace Setup — Windows")
+    app = InstallerApp(title="Memory Palace Setup - Windows")
     app.run()
 
 
 if __name__ == "__main__":
     main()
-''')
+''', encoding='utf-8')
 
     print("\nCollecting package files:")
     data_args = collect_data()

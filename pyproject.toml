@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-palace"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 description = "Persistent semantic memory for AI agents — any model, any provider, your hardware, your data"
 readme = "README.md"
 license = {text = "MIT"}
