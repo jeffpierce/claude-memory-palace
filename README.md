@@ -62,6 +62,31 @@ See [docs/models.md](docs/models.md) for the full model guide with VRAM budgets 
 - **MCP Integration** — Works natively with any MCP-compatible client (Claude Desktop, Claude Code, etc.)
 - **TOON Encoding** — Token-efficient structured responses that reduce context window usage
 
+## How Does It Compare?
+
+The MCP memory space is active. Here's how Memory Palace stacks up against the most capable alternatives:
+
+| Feature | Memory Palace | [Mem0](https://mem0.ai/openmemory) | [Cognee](https://github.com/topoteretes/cognee) | [Memento](https://github.com/gannonh/memento-mcp) | [Zep/Graphiti](https://getzep.com) | [doobidoo](https://github.com/doobidoo/mcp-memory-service) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Persistent memory | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Semantic search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Knowledge graph (typed edges) | ✅ | Partial | ✅ | ✅ | ✅ | ❌ |
+| Centrality-weighted ranking | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Multi-instance messaging | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Lifecycle management (audit, dedup, contradictions) | ✅ | Partial | Partial | ❌ | Partial | Partial |
+| Semantic code search (prose-based) | ✅ | ❌ | AST-based | ❌ | ❌ | ❌ |
+| Transcript extraction | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Fully local (no cloud LLMs) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| MCP native | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+### What's actually different
+
+**Semantic code search that isn't grep or AST parsing.** `code_remember` uses a local LLM to generate a prose description of what a source file does, embeds *that* prose, and stores the raw code separately. When you search "how does authentication work", you're matching against natural language descriptions, not token sequences or syntax trees. The only other tool using this technique is [Greptile](https://www.greptile.com/) (cloud SaaS, $30/dev/mo). Everyone else — Cursor, Sourcegraph, Cognee, GitLab — embeds raw code chunks or parses ASTs.
+
+**Multi-instance messaging built into the memory layer.** Different AI instances (desktop app, code editor, web) can send typed messages to each other through the palace — handoffs, status updates, questions, context sharing. No other MCP memory server has this. Agent orchestration frameworks (A2A, Agent-MCP) exist but they're not memory systems.
+
+**Everything runs locally.** Embeddings, search synthesis, relationship classification, transcript extraction — all via Ollama on your hardware. Most competitors require cloud LLM calls for at least some operations.
+
 ## Tools (13)
 
 ### Core Memory
