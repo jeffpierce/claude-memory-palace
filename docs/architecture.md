@@ -4,7 +4,7 @@
 
 Every AI session starts as a blank slate. Context windows are finite. Sessions end, knowledge dies. Each AI instance is an island.
 
-Current solutions are all vendor-locked: ChatGPT's memory only works with OpenAI. Claude's projects only work with Anthropic. Switch providers and you start over. Your accumulated context — decisions, preferences, project history — belongs to the vendor, not to you.
+Current solutions are all vendor-locked: ChatGPT's memory only works with OpenAI. Anthropic's projects only work with Claude. Switch providers and you start over. Your accumulated context — decisions, preferences, project history — belongs to the vendor, not to you.
 
 Meanwhile, the industry races to build bigger context windows. 128K. 200K. 1M tokens. But a bigger scratchpad isn't memory. You don't solve human amnesia by giving someone a bigger whiteboard.
 
@@ -65,7 +65,7 @@ It runs on YOUR hardware. SQLite + local embeddings via Ollama. No one's trainin
 
 ### 5. No Vendor Lock-In
 
-ChatGPT's memory locks you to OpenAI. Claude's project knowledge locks you to Anthropic. Gemini's context locks you to Google. Memory Palace? It's *yours*. The protocol is open. The data is local. Walk away from any provider whenever you want.
+ChatGPT's memory locks you to OpenAI. Anthropic's project knowledge locks you to Claude. Gemini's context locks you to Google. Memory Palace? It's *yours*. The protocol is open. The data is local. Walk away from any provider whenever you want.
 
 ### 6. Multi-Instance Coordination
 
@@ -134,9 +134,8 @@ The AI doesn't need to ingest 500 files. It traverses the graph, pulling only wh
 |------|-------------|--------|
 | `memory_link` | Create a typed, weighted, optionally bidirectional edge between two memories | ✅ Shipping |
 | `memory_unlink` | Remove edges between memories | ✅ Shipping |
-| `memory_related` | Get immediate connections (1 hop) from a memory | ✅ Shipping |
-| `memory_graph` | Breadth-first traversal to configurable depth | ✅ Shipping |
-| `memory_relationship_types` | List standard relationship types | ✅ Shipping |
+
+**Note:** Graph traversal is now built into `memory_get` via `traverse=True`, `graph_depth`, and `direction` parameters. The `memory_link` tool with `archive_old=True` and `relation_type="supersedes"` replaces the previous `memory_supersede` tool.
 
 Edges include metadata explaining *why* the connection exists, strength weights for traversal filtering, and directional semantics for accurate graph queries.
 
@@ -174,9 +173,23 @@ Both parameters are controllable:
 - `include_graph=false` disables graph context entirely (for speed)
 - `graph_top_n` (recall only) controls how many results get graph context
 
+### Centrality-Weighted Retrieval
+
+**Status:** ✅ Shipping
+
+Memory Palace doesn't just store connections — it uses them to improve search results. The retrieval system combines semantic similarity with access patterns and graph structure:
+
+```
+score = (semantic_similarity × 0.7) + (log(access_count + 1) × 0.15) + (in_degree_centrality × 0.15)
+```
+
+**Why this matters:** Frequently accessed memories and well-connected hub nodes rank higher than isolated matches. A memory referenced by 10 other memories is more foundational than a one-off note with similar wording. The graph structure becomes a signal of importance.
+
+This is the "understanding" layer in action — the graph doesn't just store relationships, it actively shapes what you retrieve.
+
 ## The Handoff System: Decentralized Agent Coordination
 
-**Status:** ✅ Shipping (polling-based)
+**Status:** ✅ Shipping (push-based for PostgreSQL, polling for SQLite)
 
 ### The Old Way: Hub-and-Spoke
 
@@ -209,7 +222,7 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
   └────┬────┘         └────┬────┘
        │                   │
        │  memory_remember  │  memory_recall
-       │  handoff_send     │  handoff_get
+       │  message(send)    │  message(get)
        │                   │
   ┌────┴───────────────────┴────┐
   │       Memory Palace         │
@@ -218,7 +231,7 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
   └────┬───────────────────┬────┘
        │                   │
        │  memory_recall    │  memory_remember
-       │  handoff_get      │  handoff_send
+       │  message(get)     │  message(send)
        │                   │
   ┌────┴────┐         ┌────┴────┐
   │ Agent C │         │ Agent D │
@@ -227,9 +240,9 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
 
 **No controller.** Each agent reads and writes to shared memory. Each agent can leave targeted handoff messages for specific other agents. They coordinate through the data store, not through a supervisor.
 
-Each worker can be a *different model*. Cheap local model for routine tasks, Claude for complex reasoning, specialized fine-tuned model for domain work — all sharing the same memory, all passing messages through the same bus. No single model needs to hold the whole picture.
+Each worker can be a *different model*. Cheap local model for routine tasks, frontier models for complex reasoning, specialized fine-tuned model for domain work — all sharing the same memory, all passing messages through the same bus. No single model needs to hold the whole picture.
 
-**Current implementation:** Agents poll for handoffs via `handoff_get`. Push notifications via LISTEN/NOTIFY are planned but not yet implemented.
+**Current implementation:** The unified `message` tool handles all inter-instance messaging with `action="send"`, `action="get"`, `action="mark_read"`, and pubsub operations (`subscribe`/`unsubscribe`). PostgreSQL uses LISTEN/NOTIFY for real-time push-based delivery. SQLite uses polling.
 
 ## Backends
 
@@ -246,7 +259,7 @@ SQLite (personal)     PostgreSQL (team/enterprise)
 | Tier | Backend | Concurrent Agents | Use Case | Status |
 |------|---------|-------------------|----------|--------|
 | Personal | SQLite | 1–10 | Individual developer, local AI instances | ✅ Shipping |
-| Team | PostgreSQL + pgvector | 10–100 | Dev team sharing AI memory | 🔧 Code complete |
+| Team | PostgreSQL + pgvector | 10–100 | Dev team sharing AI memory | ✅ Shipping |
 | Department | PostgreSQL + read replicas | 100–500 | Cross-team knowledge sharing | 📋 Planned |
 | Enterprise | PostgreSQL cluster | 500–10,000+ | Full agent swarm orchestration | 📋 Planned |
 
@@ -287,7 +300,6 @@ The following are architected but **not yet implemented**:
 
 - **Schema-based tenant isolation** — Each department gets its own PostgreSQL schema for data isolation
 - **PgBouncer integration** — External connection pooling for thousands of concurrent agents
-- **LISTEN/NOTIFY** — Push-based handoff delivery instead of polling
 - **Read replicas** — Separate read scaling from write path
 
 ### Air-Gapped & Sovereign Deployment
@@ -299,6 +311,81 @@ This is critical for:
 - Healthcare (HIPAA compliance)
 - Financial services (data residency requirements)
 - Any organization with strict data sovereignty policies
+
+## Code Retrieval: Natural Language → Implementation
+
+**Status:** ✅ Shipping
+
+Embedding raw source code produces terrible semantic search results. `def calculate_payment(...)` embedded as tokens doesn't match the query "how do we handle refunds?". The solution: dual-memory indexing.
+
+### The Pattern
+
+Each indexed source file creates **two linked memories**:
+
+1. **Prose description** (embedded) — Natural language summary of what the code does, key patterns, and gotchas
+2. **Raw code** (stored, not embedded) — The actual implementation
+
+```
+Query: "how do we handle duplicate payments?"
+  ↓ (semantic search)
+Prose: "PaymentService uses outbox pattern to prevent duplicate charges..."
+  ↓ (graph traversal via memory_get)
+Code: [Full PaymentService.ts implementation]
+```
+
+### Why This Works
+
+- **Search hits prose:** "duplicate charges" matches "prevent duplicate charges" in natural language
+- **Graph retrieves code:** Once you find the right file via prose, traversal pulls the implementation
+- **Small context budget:** You don't embed 500 files. You embed 500 descriptions and pull code on-demand
+
+This is how humans navigate large codebases: you ask someone "where's the payment logic?", they tell you the file, *then* you read the code. Memory Palace does the same.
+
+## Multi-Project Support
+
+**Status:** ✅ Shipping
+
+Memories can belong to **multiple projects simultaneously**. This enables cross-project knowledge sharing while maintaining project-scoped queries.
+
+### Implementation
+
+- **Storage:** PostgreSQL uses native `ARRAY` columns, SQLite uses JSON arrays
+- **Query helpers:** `_project_contains(project)` for single-project filtering, `_projects_overlap([...])` for union queries
+- **Auto-link scoping:** New memories auto-link to similar memories, optionally restricted to same-project only
+
+### Use Cases
+
+- Shared infrastructure decisions (relevant to `backend`, `frontend`, `mobile`)
+- Cross-cutting concerns (auth, logging, observability)
+- Team onboarding memories (tagged with multiple product areas)
+- Common gotchas (applies to all projects using the same framework)
+
+Assign `project="life"` for personal memories unrelated to code. Most coding memories get explicit project tags.
+
+## Foundational Memories
+
+**Status:** ✅ Shipping
+
+Core memories can be flagged `foundational=True` to mark them as permanent. Foundational memories:
+
+- **Never archived** by automated cleanup, even if old or rarely accessed
+- **Never flagged as stale** by audit tools
+- **Protected from bulk operations** unless explicitly targeted by ID
+
+Use for: identity information, core principles, critical architectural decisions, or any memory that should persist indefinitely regardless of usage patterns.
+
+## Auto-Linking: Self-Organizing Memory
+
+**Status:** ✅ Shipping
+
+New memories automatically find similar existing memories and create typed relationship edges. This happens during `memory_remember` with no manual intervention.
+
+### Two-Tier System
+
+- **Auto-linked (≥0.75 similarity):** Edges created automatically with LLM-classified relationship types (`relates_to`, `refines`, `contradicts`, etc.)
+- **Suggested (0.675–0.75 similarity):** Surfaced for human review, no edges created automatically
+
+Auto-linking builds the knowledge graph organically. The more you store, the more connected it becomes — without manual curation.
 
 ## Design Principles
 

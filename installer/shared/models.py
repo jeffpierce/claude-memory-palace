@@ -1,5 +1,5 @@
 """
-Model selection and download for Claude Memory Palace installer.
+Model selection and download for Memory Palace installer.
 
 Selects appropriate models based on GPU capabilities and manages Ollama pulls.
 """

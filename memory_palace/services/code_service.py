@@ -1,5 +1,5 @@
 """
-Code service for Claude Memory Palace.
+Code service for Memory Palace.
 
 Provides functions for indexing and retrieving source code via natural language.
 Uses a two-layer architecture:
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from memory_palace.models import Memory, MemoryEdge
+from memory_palace.models import Memory, MemoryEdge, _project_contains
 from memory_palace.database import get_session
 from memory_palace.services.memory_service import remember, recall
 from memory_palace.services.graph_service import link_memories, get_related_memories, supersede_memory
@@ -116,7 +116,7 @@ def code_remember(
         # Check for existing index using any path variant (handles WSL vs Windows)
         from sqlalchemy import or_
         existing_prose = db.query(Memory).filter(
-            Memory.project == project,
+            _project_contains(project),
             Memory.memory_type == "code_description",
             Memory.is_archived == False,
             or_(*[Memory.source_context.contains(variant) for variant in path_variants])
@@ -170,7 +170,7 @@ def code_remember(
             content=transpile_result["prose"],
             subject=transpile_result["subject"],
             keywords=keywords,
-            importance=5,
+            foundational=False,
             project=project,
             source_type="explicit",
             source_context=f"Indexed from: {canonical_path}"
@@ -191,7 +191,7 @@ def code_remember(
             content=code_content,
             subject=f"Source: {file_name}",
             keywords=[canonical_path, file_name],
-            importance=5,
+            foundational=False,
             source_type="explicit",
             source_context=f"Raw code from: {canonical_path}"
             # NOTE: No embedding field set - this memory is NOT embedded

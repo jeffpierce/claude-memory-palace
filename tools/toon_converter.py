@@ -2,7 +2,7 @@
 """
 JSONL to TOON (Token-Optimized Notation) Converter
 
-Converts Claude transcript JSONL files to a compact text format optimized for token efficiency.
+Converts AI transcript JSONL files to a compact text format optimized for token efficiency.
 Achieves 95%+ compression ratio while preserving conversation semantics.
 
 Two modes:
@@ -472,7 +472,7 @@ def convert_jsonl_to_toon_chunks(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert Claude transcript JSONL to TOON (Token-Optimized Notation) format.",
+        description="Convert AI transcript JSONL to TOON (Token-Optimized Notation) format.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Modes:

@@ -210,9 +210,9 @@ try {
 
                 # Recommendations based on VRAM
                 if ($vramGB -ge 16) {
-                    Write-Info "Excellent! You can run large embedding models (SFR-Embedding-Mistral F16)"
+                    Write-Info "Excellent! You can run the largest recommended models"
                 } elseif ($vramGB -ge 8) {
-                    Write-Info "Good. You can run medium embedding models (nomic-embed-text)"
+                    Write-Info "Good. You can run all recommended models"
                 } else {
                     Write-Warning "Limited VRAM. Consider using smaller models or CPU inference."
                 }
@@ -294,14 +294,14 @@ if (-not $pythonCmd) {
 # =============================================================================
 Write-Header "First-Time Setup"
 
-$setupScript = Join-Path $ScriptDir "setup" "first_time_setup.py"
+$setupScript = Join-Path $ScriptDir "setup" "first_run.py"
 if (Test-Path $setupScript) {
     Write-Info "Found first-time setup script"
     Write-Host ""
-    Write-Host "First-time setup will:" -ForegroundColor Yellow
-    Write-Host "  - Create configuration directory (~/.memory-palace/)"
-    Write-Host "  - Initialize the SQLite database"
-    Write-Host "  - Pull required Ollama models (if Ollama is running)"
+    Write-Host "The setup wizard will:" -ForegroundColor Yellow
+    Write-Host "  - Detect your GPU"
+    Write-Host "  - Recommend models based on your hardware"
+    Write-Host "  - Download recommended Ollama models"
     Write-Host ""
 
     if ($pythonCmd -and (Ask-Permission "Run first-time setup?")) {
@@ -343,8 +343,8 @@ if ($gpuInfo) {
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Ensure Ollama is running: ollama serve"
-Write-Host "  2. Pull embedding model: ollama pull sfr-embedding-mistral:f16"
-Write-Host "  3. Configure Claude Code to use the MCP server"
+Write-Host "  2. Run setup wizard: python -m setup.first_run"
+Write-Host "  3. Configure your AI client to use the MCP server (see docs/README.md)"
 Write-Host ""
 Write-Host "Documentation: $ScriptDir\docs\"
 Write-Host ""

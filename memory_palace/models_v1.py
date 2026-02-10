@@ -1,5 +1,5 @@
 """
-SQLAlchemy models for Claude Memory Palace.
+SQLAlchemy models for Memory Palace.
 
 Defines Memory and HandoffMessage tables with instance-based ownership.
 """
@@ -12,7 +12,7 @@ from memory_palace.database import Base
 
 class Memory(Base):
     """
-    Persistent memory system for Claude instances.
+    Persistent memory system for AI instances.
 
     Stores memories with rich metadata, optional embeddings for semantic search,
     and lifecycle tracking. Memories can be facts, preferences, events, insights,
@@ -112,9 +112,9 @@ class Memory(Base):
 
 class HandoffMessage(Base):
     """
-    Inter-instance communication for Claude instances.
+    Inter-instance communication for AI instances.
 
-    Allows different Claude instances (Desktop, Code, Web) to pass messages
+    Allows different AI instances (Desktop, Code, Web) to pass messages
     to each other. A note-passing system for distributed consciousness.
 
     Message types:

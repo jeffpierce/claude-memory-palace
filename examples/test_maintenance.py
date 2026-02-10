@@ -1,7 +1,7 @@
 """
 Test script for maintenance tools.
 
-Demonstrates how to use memory_audit, memory_batch_archive, and memory_reembed
+Demonstrates how to use memory_audit, memory_archive, and memory_reembed
 via the service layer (bypassing MCP for direct testing).
 """
 
@@ -57,7 +57,7 @@ def test_audit():
 def test_batch_archive_dry_run():
     """Test batch archive in dry run mode."""
     print("\n" + "=" * 60)
-    print("TESTING: memory_batch_archive (DRY RUN)")
+    print("TESTING: memory_archive (DRY RUN)")
     print("=" * 60)
 
     # Test with aggressive criteria to see what would be archived

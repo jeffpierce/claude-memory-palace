@@ -1,5 +1,5 @@
 """
-Database connection and session management for Claude Memory Palace v2.
+Database connection and session management for Memory Palace v2.
 
 Supports PostgreSQL with pgvector (primary) and SQLite (legacy/migration).
 """

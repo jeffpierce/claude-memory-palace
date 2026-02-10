@@ -60,9 +60,9 @@ The embedding model affects semantic search quality — how well "what was our a
 
 ```bash
 # Re-generate all embeddings with the new model
-# Use the memory_backfill_embeddings tool, or:
+# Use the memory_reembed tool, or:
 export MEMORY_PALACE_EMBEDDING_MODEL=snowflake-arctic-embed:335m
-# Then call memory_backfill_embeddings via your MCP client
+# Then call memory_reembed via your MCP client
 ```
 
 ### Combined VRAM Budget
@@ -110,6 +110,6 @@ To switch models after initial setup:
    }
    ```
 
-3. **If you changed the embedding model**, re-embed existing memories using the `memory_backfill_embeddings` tool.
+3. **If you changed the embedding model**, re-embed existing memories using the `memory_reembed` tool.
 
 Environment variables override config file values.

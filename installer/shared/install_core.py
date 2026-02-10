@@ -1,5 +1,5 @@
 """
-Core installation logic for Claude Memory Palace.
+Core installation logic for Memory Palace.
 
 Handles venv creation, package installation, and Ollama setup.
 """
@@ -300,7 +300,7 @@ def install_ollama(
 
 def clone_or_update_repo(
     install_dir: Path,
-    repo_url: str = "https://github.com/clawdbot/claude-memory-palace.git",
+    repo_url: str = "https://github.com/jeffpierce/memory-palace.git",
     branch: str = "main",
     progress: Optional[Callable[[str], None]] = None,
 ) -> InstallResult:

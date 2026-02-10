@@ -2,7 +2,7 @@
 
 ## Goal
 
-Zero-friction installation of Claude Memory Palace for non-technical users.
+Zero-friction installation of Memory Palace for non-technical users.
 The only prerequisite knowledge: "what AI tools do you already use?"
 
 ## Database

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Claude Memory Palace — Windows GUI Launcher
+Memory Palace — Windows GUI Launcher
 
 Thin wrapper that launches the cross-platform GUI installer.
 Can be compiled with PyInstaller into a standalone .exe.
@@ -16,7 +16,7 @@ from gui.app import InstallerApp
 
 
 def main():
-    app = InstallerApp(title="Claude Memory Palace Setup — Windows")
+    app = InstallerApp(title="Memory Palace Setup — Windows")
     app.run()
 
 

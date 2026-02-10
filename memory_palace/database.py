@@ -1,12 +1,12 @@
 """
-Database connection and session management for Claude Memory Palace.
+Database connection and session management for Memory Palace.
 
-v2: Re-exports from database_v2 for PostgreSQL + pgvector support.
-For legacy SQLite code, see database_v1.py.
+v3: Re-exports from database_v3 with pubsub LISTEN/NOTIFY support.
+For v2 code, see database_v2.py. For legacy SQLite code, see database_v1.py.
 """
 
-# Re-export everything from v2
-from memory_palace.database_v2 import (
+# Re-export everything from v3
+from memory_palace.database_v3 import (
     Base,
     get_engine,
     get_session_factory,
@@ -16,6 +16,9 @@ from memory_palace.database_v2 import (
     drop_db,
     reset_engine,
     check_connection,
+    pg_listen,
+    pg_notify,
+    is_postgres_db,
 )
 
 __all__ = [
@@ -28,4 +31,7 @@ __all__ = [
     "drop_db",
     "reset_engine",
     "check_connection",
+    "pg_listen",
+    "pg_notify",
+    "is_postgres_db",
 ]

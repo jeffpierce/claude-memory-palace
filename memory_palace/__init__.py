@@ -1,8 +1,8 @@
 """
-Claude Memory Palace - Persistent memory system for Claude instances.
+Memory Palace - Persistent memory system for AI assistants.
 
 Provides semantic search over memories and handoff messaging between
-Claude instances. Instances are configured in ~/.memory-palace/config.json.
+AI instances. Instances are configured in ~/.memory-palace/config.json.
 """
 
 __version__ = "0.1.0"

@@ -6,7 +6,7 @@ Converts source code files to prose descriptions optimized for semantic search.
 The prose captures WHAT the code does and WHY, enabling natural language queries
 to find relevant code via embedding similarity.
 
-Part of the Code Retrieval Layer for Claude Memory Palace.
+Part of the Code Retrieval Layer for Memory Palace.
 
 Usage:
     python code_transpiler.py path/to/file.py

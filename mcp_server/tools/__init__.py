@@ -1,66 +1,62 @@
 """
-MCP Tools for Claude Memory Palace.
+MCP Tools for Memory Palace v2.0.
 
 Each tool is in its own module for maintainability.
+This module registers the 13 v2.0 tools (down from 25 in v1.0).
 """
 
+# Core memory operations
 from .remember import register_remember
 from .recall import register_recall
-from .forget import register_forget
-from .memory_stats import register_memory_stats
-from .backfill_embeddings import register_backfill_embeddings
-from .send_handoff import register_send_handoff
-from .get_handoffs import register_get_handoffs
-from .mark_handoff_read import register_mark_handoff_read
-from .reflect import register_reflect
-from .jsonl_to_toon import register_jsonl_to_toon
 from .get_memory import register_get_memory
+from .recent import register_recent
+from .archive import register_archive
+
+# Knowledge graph
 from .link import register_link
 from .unlink import register_unlink
-from .related import register_related
-from .supersede import register_supersede
-from .graph import register_graph
+
+# Messaging
+from .message import register_message
+
+# Code indexing
 from .code_remember import register_code_remember
-from .code_recall import register_code_recall
+
+# Maintenance
 from .audit import register_audit
-from .batch_archive import register_batch_archive
 from .reembed import register_reembed
-from .moltbook_submit import register_moltbook_submit
-from .moltbook_qc import register_moltbook_qc
+from .memory_stats import register_memory_stats
+
+# Processing
+from .reflect import register_reflect
 
 
 def register_all_tools(mcp):
-    """Register all Memory Palace tools with the MCP server."""
+    """Register all Memory Palace v2.0 tools with the MCP server."""
     # Core memory operations
     register_remember(mcp)
     register_recall(mcp)
-    register_forget(mcp)
     register_get_memory(mcp)
-    register_memory_stats(mcp)
-    register_backfill_embeddings(mcp)
-    # Handoff messaging
-    register_send_handoff(mcp)
-    register_get_handoffs(mcp)
-    register_mark_handoff_read(mcp)
-    # Reflection/processing
-    register_reflect(mcp)
-    register_jsonl_to_toon(mcp)
+    register_recent(mcp)
+    register_archive(mcp)
+
     # Knowledge graph
     register_link(mcp)
     register_unlink(mcp)
-    register_related(mcp)
-    register_supersede(mcp)
-    register_graph(mcp)
-    # Code retrieval
+
+    # Messaging
+    register_message(mcp)
+
+    # Code indexing
     register_code_remember(mcp)
-    register_code_recall(mcp)
+
     # Maintenance
     register_audit(mcp)
-    register_batch_archive(mcp)
     register_reembed(mcp)
-    # Moltbook gateway
-    register_moltbook_submit(mcp)
-    register_moltbook_qc(mcp)
+    register_memory_stats(mcp)
+
+    # Processing
+    register_reflect(mcp)
 
 
 __all__ = ["register_all_tools"]

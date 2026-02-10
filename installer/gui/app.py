@@ -1,5 +1,5 @@
 """
-Claude Memory Palace — Cross-Platform GUI Installer
+Memory Palace — Cross-Platform GUI Installer
 
 Thin tkinter UI over the shared installer core.
 Platform-agnostic: Windows, macOS, Linux (including Steam Deck).
@@ -13,6 +13,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
 from typing import List, Optional
+import json
+import subprocess
 
 # Add parent directory to path so shared modules are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -43,7 +45,7 @@ class InstallerApp:
     PROGRESS = 4
     COMPLETE = 5
 
-    def __init__(self, title: str = "Claude Memory Palace Setup"):
+    def __init__(self, title: str = "Memory Palace Setup"):
         self.root = tk.Tk()
         self.root.title(title)
         self.root.geometry("650x550")
@@ -59,6 +61,8 @@ class InstallerApp:
         # User selections
         self.selected_client_vars: dict[str, tk.BooleanVar] = {}
         self.install_llm_var = tk.BooleanVar(value=False)
+        self.db_type_var = tk.StringVar(value="sqlite")
+        self.pg_url_var = tk.StringVar(value="postgresql://localhost:5432/memory_palace")
 
         # Container
         self.container = ttk.Frame(self.root, padding="20")
@@ -115,7 +119,7 @@ class InstallerApp:
 
     def _show_welcome(self):
         self._clear()
-        self._title("Claude Memory Palace", size=24)
+        self._title("Memory Palace", size=24)
 
         desc = ttk.Frame(self.container)
         desc.pack(fill=tk.X, padx=30, pady=10)
@@ -426,6 +430,13 @@ class InstallerApp:
     # Screen 4: Options (models, install dir)
     # ========================================================================
 
+    def _on_db_type_changed(self):
+        """Show/hide PostgreSQL URL entry based on database type selection."""
+        if self.db_type_var.get() == "postgres":
+            self.pg_url_frame.pack(fill=tk.X, pady=(5, 0), padx=(25, 0))
+        else:
+            self.pg_url_frame.pack_forget()
+
     def _show_options(self):
         self._clear()
         self._title("Installation Options")
@@ -483,6 +494,67 @@ class InstallerApp:
                 foreground="gray",
                 wraplength=520,
             ).pack(anchor=tk.W, padx=(25, 0), pady=(0, 5))
+
+        # Database selection
+        db_frame = ttk.LabelFrame(self.container, text="Database", padding="15")
+        db_frame.pack(fill=tk.X, padx=30, pady=10)
+
+        # SQLite option (default)
+        sqlite_row = ttk.Frame(db_frame)
+        sqlite_row.pack(fill=tk.X, pady=3)
+        ttk.Radiobutton(
+            sqlite_row,
+            text="SQLite (default)",
+            variable=self.db_type_var,
+            value="sqlite",
+            command=self._on_db_type_changed
+        ).pack(side=tk.LEFT)
+        ttk.Label(
+            sqlite_row,
+            text="Zero setup. Single file. Works great for personal use.",
+            font=("Segoe UI", 9),
+            foreground="gray",
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        # PostgreSQL option
+        pg_row = ttk.Frame(db_frame)
+        pg_row.pack(fill=tk.X, pady=3)
+        ttk.Radiobutton(
+            pg_row,
+            text="PostgreSQL",
+            variable=self.db_type_var,
+            value="postgres",
+            command=self._on_db_type_changed
+        ).pack(side=tk.LEFT)
+        ttk.Label(
+            pg_row,
+            text="Native vector search, concurrent access. Requires PostgreSQL + pgvector installed separately.",
+            font=("Segoe UI", 9),
+            foreground="gray",
+            wraplength=450,
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        # PostgreSQL URL entry (only visible when postgres is selected)
+        self.pg_url_frame = ttk.Frame(db_frame)
+        self.pg_url_frame.pack(fill=tk.X, pady=(5, 0), padx=(25, 0))
+
+        ttk.Label(
+            self.pg_url_frame,
+            text="Connection URL:",
+            font=("Segoe UI", 9),
+        ).pack(side=tk.LEFT)
+
+        self.pg_url_entry = ttk.Entry(
+            self.pg_url_frame,
+            textvariable=self.pg_url_var,
+            width=50,
+            font=("Consolas", 9),
+        )
+        self.pg_url_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+        # Initially hide PostgreSQL URL entry
+        if self.db_type_var.get() != "postgres":
+            self.pg_url_frame.pack_forget()
 
         # Install directory
         dir_frame = ttk.LabelFrame(self.container, text="Install Location", padding="10")
@@ -580,13 +652,14 @@ class InstallerApp:
         self.root.after(0, lambda: self.progress_bar.configure(value=val))
 
     def _run_install(self):
-        steps = 6  # download, venv, package, embedding, base LLM, configure
+        steps = 7  # download, venv, package, database config, embedding, base LLM, configure
         if (self.install_llm_var.get() and self.model_rec.llm_model
                 and self.model_rec.llm_model != "qwen3:1.7b"):
             steps += 1  # upgraded LLM
         step_size = 100 // steps
         progress = 0
         success = True
+        pg_connection_ok = False
 
         try:
             # 1. Download / clone repo
@@ -633,7 +706,80 @@ class InstallerApp:
             progress += step_size
             self._set_progress(progress)
 
-            # 4. Pull embedding model
+            # 4. Configure database
+            db_type = self.db_type_var.get()
+            if db_type == "sqlite":
+                self._log("💾 Database: SQLite (default)")
+                self._log("  ✓ Will be created automatically on first use")
+            else:
+                # PostgreSQL
+                self._log("💾 Configuring PostgreSQL connection...")
+                pg_url = self.pg_url_var.get()
+                self._log(f"  Testing connection to {pg_url}...")
+
+                # Test the connection
+                venv_python = get_venv_python(self.install_dir)
+                test_code = f'''from sqlalchemy import create_engine
+try:
+    e = create_engine("{pg_url}")
+    c = e.connect()
+    c.close()
+    print("OK")
+except Exception as ex:
+    print(f"ERROR: {{ex}}")
+'''
+                try:
+                    result_pg = subprocess.run(
+                        [str(venv_python), "-c", test_code],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if result_pg.returncode == 0 and "OK" in result_pg.stdout:
+                        self._log("  ✓ PostgreSQL connection successful")
+                        pg_connection_ok = True
+                    else:
+                        error_msg = result_pg.stdout + result_pg.stderr
+                        self._log(f"  ⚠ PostgreSQL connection failed: {error_msg.strip()}")
+                        self._log("  You can configure this later in ~/.memory-palace/config.json")
+                except subprocess.TimeoutExpired:
+                    self._log("  ⚠ PostgreSQL connection test timed out")
+                    self._log("  You can configure this later in ~/.memory-palace/config.json")
+                except Exception as e:
+                    self._log(f"  ⚠ PostgreSQL connection test error: {str(e)}")
+                    self._log("  You can configure this later in ~/.memory-palace/config.json")
+
+            # Write config.json
+            self._log("⚙️  Writing configuration file...")
+            config_dir = Path.home() / ".memory-palace"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_path = config_dir / "config.json"
+
+            config = {
+                "database": {
+                    "type": db_type,
+                    "url": self.pg_url_var.get() if db_type == "postgres" else None
+                },
+                "ollama_url": "http://localhost:11434",
+                "embedding_model": None,
+                "llm_model": None,
+                "synthesis": {"enabled": True},
+                "auto_link": {
+                    "enabled": True,
+                    "link_threshold": 0.75,
+                    "suggest_threshold": 0.675
+                },
+                "toon_output": True
+            }
+
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=2)
+            self._log(f"  ✓ Config written to {config_path}")
+
+            progress += step_size
+            self._set_progress(progress)
+
+            # 6. Pull embedding model
             self._log(f"🧠 Downloading embedding model ({self.model_rec.embedding_model})...")
             if check_model_installed(self.model_rec.embedding_model):
                 self._log("  ✓ Already installed")
@@ -649,7 +795,7 @@ class InstallerApp:
             progress += step_size
             self._set_progress(progress)
 
-            # 5. Base LLM model (always — handles synthesis + classification)
+            # 7. Base LLM model (always — handles synthesis + classification)
             base_llm = "qwen3:1.7b"
             self._log(f"🧠 Downloading base LLM ({base_llm})...")
             if check_model_installed(base_llm):
@@ -665,7 +811,7 @@ class InstallerApp:
             progress += step_size
             self._set_progress(progress)
 
-            # 6. Optional upgraded LLM model
+            # 8. Optional upgraded LLM model
             if (self.install_llm_var.get() and self.model_rec.llm_model
                     and self.model_rec.llm_model != base_llm):
                 self._log(f"🧠 Downloading upgraded LLM ({self.model_rec.llm_model})...")
@@ -682,7 +828,7 @@ class InstallerApp:
                 progress += step_size
                 self._set_progress(progress)
 
-            # 6. Configure clients
+            # 9. Configure clients
             selected_ids = [
                 cid for cid, var in self.selected_client_vars.items() if var.get()
             ]
@@ -704,7 +850,7 @@ class InstallerApp:
             progress += step_size
             self._set_progress(progress)
 
-            # 7. Verify
+            # 10. Verify
             self._log("🔍 Verifying installation...")
             result = verify_installation(
                 self.install_dir,
@@ -720,6 +866,12 @@ class InstallerApp:
         except Exception as e:
             self._log(f"❌ Unexpected error: {str(e)}")
             success = False
+
+        # Store database configuration state for completion screen
+        self.db_config_state = {
+            "type": self.db_type_var.get(),
+            "pg_connection_ok": pg_connection_ok if self.db_type_var.get() == "postgres" else None
+        }
 
         self.root.after(1000, lambda: self._show_complete(success))
 
@@ -754,6 +906,33 @@ class InstallerApp:
                 foreground="green",
             ).pack(anchor=tk.W)
 
+            # Show database configuration
+            if hasattr(self, "db_config_state"):
+                db_type = self.db_config_state["type"]
+                if db_type == "sqlite":
+                    ttk.Label(
+                        info_frame,
+                        text="Database: SQLite",
+                        font=("Segoe UI", 10),
+                        foreground="green",
+                    ).pack(anchor=tk.W, pady=(5, 0))
+                elif db_type == "postgres":
+                    pg_ok = self.db_config_state.get("pg_connection_ok", False)
+                    if pg_ok:
+                        ttk.Label(
+                            info_frame,
+                            text="Database: PostgreSQL",
+                            font=("Segoe UI", 10),
+                            foreground="green",
+                        ).pack(anchor=tk.W, pady=(5, 0))
+                    else:
+                        ttk.Label(
+                            info_frame,
+                            text="Database: PostgreSQL (connection not verified)",
+                            font=("Segoe UI", 10),
+                            foreground="orange",
+                        ).pack(anchor=tk.W, pady=(5, 0))
+
             if configured_names:
                 ttk.Label(
                     info_frame,
@@ -772,9 +951,9 @@ class InstallerApp:
                 steps_text = (
                     "1. Restart your AI client(s) to activate Memory Palace\n\n"
                     "2. Test it out:\n"
-                    '   Tell Claude: "Remember that I like coffee"\n'
+                    '   Tell your AI: "Remember that I like coffee"\n'
                     '   In a new chat: "What do I like to drink?"\n\n'
-                    "   Claude should remember! 🧠"
+                    "   It should remember! 🧠"
                 )
             else:
                 python_path = get_venv_python(self.install_dir)
@@ -786,7 +965,17 @@ class InstallerApp:
                     f'     "cwd": "{self.install_dir}"\n'
                     "   }\n\n"
                     "2. Restart your AI client\n\n"
-                    "3. Test: Tell Claude to remember something!"
+                    "3. Test: Tell your AI to remember something!"
+                )
+
+            # Add PostgreSQL note if connection failed
+            if (hasattr(self, "db_config_state") and
+                self.db_config_state["type"] == "postgres" and
+                not self.db_config_state.get("pg_connection_ok", False)):
+                config_path = Path.home() / ".memory-palace" / "config.json"
+                steps_text += (
+                    f"\n\n⚠️  PostgreSQL connection could not be verified.\n"
+                    f"Edit {config_path} to configure your database connection."
                 )
 
             text = tk.Text(

@@ -1,0 +1,16 @@
+[project]
+name = "moltbook-gateway"
+version = "1.0.0"
+description = "Moltbook Gateway MCP extension for Claude Memory Palace"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0",
+    "memory-palace",
+]
+
+[project.scripts]
+moltbook-gateway-mcp = "extensions.moltbook-gateway.server:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

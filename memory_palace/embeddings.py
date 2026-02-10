@@ -1,5 +1,5 @@
 """
-Embedding operations for Claude Memory Palace.
+Embedding operations for Memory Palace.
 
 Provides functions for generating embeddings and computing similarity using Ollama.
 Uses aggressive VRAM management (keep_alive: 0) to allow model swapping.
@@ -274,16 +274,30 @@ def cosine_similarity(a, b) -> float:
     Compute cosine similarity between two vectors.
 
     Args:
-        a: First vector (list or numpy array)
-        b: Second vector (list or numpy array)
+        a: First vector (list, numpy array, or JSON string)
+        b: Second vector (list, numpy array, or JSON string)
 
     Returns:
         Similarity score between -1 and 1
     """
+    import json
+
     # Handle None cases
     if a is None or b is None:
         return 0.0
-    
+
+    # Deserialize JSON strings (SQLite storage format)
+    if isinstance(a, str):
+        try:
+            a = json.loads(a)
+        except (ValueError, TypeError):
+            return 0.0
+    if isinstance(b, str):
+        try:
+            b = json.loads(b)
+        except (ValueError, TypeError):
+            return 0.0
+
     # Convert to list if numpy array
     try:
         if hasattr(a, 'tolist'):
@@ -292,7 +306,7 @@ def cosine_similarity(a, b) -> float:
             b = b.tolist()
     except Exception:
         pass
-    
+
     # Check length match
     if len(a) != len(b):
         return 0.0

@@ -27,13 +27,16 @@ def toon_response(func: Callable) -> Callable:
     """
     Decorator that TOON-encodes tool responses when enabled.
 
-    The tool function should accept a `toon` boolean parameter (defaults to config value).
+    The decorator intercepts the `toon` parameter from kwargs (if provided by caller)
+    and uses config default if not provided. The tool function does NOT need to accept
+    a `toon` parameter - it's handled entirely by this decorator.
+
     If `toon=True`, the response is TOON-encoded. If `toon=False`, raw dict is returned.
 
     Usage:
         @mcp.tool()
         @toon_response
-        async def my_tool(arg1: str, toon: bool = None) -> dict[str, Any]:
+        async def my_tool(arg1: str) -> dict[str, Any]:
             # ... tool logic ...
             return {"result": "data"}
     """
@@ -47,12 +50,11 @@ def toon_response(func: Callable) -> Callable:
 
     async def wrapper(*args, **kwargs):
         # Get the toon parameter, defaulting to config if not provided
-        toon = kwargs.get('toon')
+        toon = kwargs.pop('toon', None)  # Remove from kwargs if present
         if toon is None:
             toon = is_toon_output_enabled()
-            kwargs['toon'] = toon
 
-        # Call the original function
+        # Call the original function (without toon in kwargs)
         result = await func(*args, **kwargs)
 
         # If toon encoding is enabled and result is a dict, encode it

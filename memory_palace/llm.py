@@ -1,5 +1,5 @@
 """
-LLM generation operations for Claude Memory Palace.
+LLM generation operations for Memory Palace.
 
 Provides functions for generating text using Ollama LLM models.
 Uses aggressive VRAM management (keep_alive: 0) to allow model swapping.

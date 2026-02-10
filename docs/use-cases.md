@@ -8,7 +8,7 @@ Real-world scenarios where Memory Palace solves problems that bigger context win
 
 **Status:** ✅ Shipping
 
-**Problem:** You've been working with Claude on a project for weeks. Every new session, you re-explain your architecture, your preferences, your decisions. Context windows don't carry over.
+**Problem:** You've been working with an AI on a project for weeks. Every new session, you re-explain your architecture, your preferences, your decisions. Context windows don't carry over.
 
 **Solution:** Memory Palace stores decisions, architecture notes, and preferences as persistent memories. Start a new session, recall what you need, and pick up where you left off.
 
@@ -26,15 +26,15 @@ Session 47: "What database did we pick for the user service and why?"
 
 **Status:** ✅ Shipping
 
-**Problem:** You've built up months of context in ChatGPT's memory. Now Claude Opus ships and you want to switch. Your options: start over, or manually recreate everything.
+**Problem:** You've built up months of context in ChatGPT's memory. Now a new frontier model ships and you want to switch. Your options: start over, or manually recreate everything.
 
 **Solution:** Memory Palace doesn't care which model you use. Switch providers, keep all your memories.
 
 ```
-Monday:     Claude stores 200 memories about your project
-Tuesday:    OpenAI releases GPT-5, you want to try it
-Wednesday:  GPT-5 connects to the same Memory Palace, recalls everything Claude stored
-Thursday:   You switch back to Claude. Nothing was lost.
+Monday:     Model A stores 200 memories about your project
+Tuesday:    A new model releases, you want to try it
+Wednesday:  Model B connects to the same Memory Palace, recalls everything from before
+Thursday:   You switch back to Model A. Nothing was lost.
 ```
 
 Your institutional knowledge is never held hostage by a subscription.
@@ -119,21 +119,21 @@ Agent: Search
   Loop:
     - Search for relevant papers/articles
     - memory_remember each finding with source, key claims, relevance score
-    - handoff_send to "analysis" when batch is ready
+    - message(action="send") to "analysis" when batch is ready
 
 Agent: Analysis  
   Role: Evaluate claims
   Loop:
-    - handoff_get from "search"
+    - message(action="get") from "search"
     - memory_recall recent findings
     - Cross-reference claims, identify contradictions
     - memory_remember analysis results
-    - handoff_send to "synthesis" when analysis batch is complete
+    - message(action="send") to "synthesis" when analysis batch is complete
 
 Agent: Synthesis
   Role: Produce final output
   Loop:
-    - handoff_get from "analysis"  
+    - message(action="get") from "analysis"  
     - memory_recall all findings + analysis
     - Generate cohesive research summary
     - memory_remember final synthesis
@@ -164,7 +164,7 @@ Agent: Style Reviewer (could be a cheap/fast local model)
   - Checks naming conventions, documentation, test coverage
   - memory_remember each finding
 
-Agent: Summary Writer (could be Claude for synthesis quality)
+Agent: Summary Writer (could be a frontier model for synthesis quality)
   - memory_recall all findings from the review
   - Produces unified review with prioritized findings
   - Posts review comment to PR
@@ -198,7 +198,7 @@ Agent: Metrics Monitor
 Agent: Pattern Detector (runs every 15 min)
   - memory_recall recent observations across all sources
   - Correlates: log errors + social complaints + metric spikes = likely incident
-  - handoff_send to "incident-response" with correlated evidence
+  - message(action="send") to "incident-response" with correlated evidence
 ```
 
 ---
@@ -224,8 +224,8 @@ memory_link(OutboxPattern → EventBus, "publishes_to")
 memory_link(DuplicateChargeIncident → DirectCallPolicy, "informed")
 
 # Later, any agent asks about payments:
-memory_graph(start_id=PaymentService, max_depth=2)
-→ Returns the service, its patterns, the event bus, the incident, 
+memory_get(memory_ids=PaymentService, traverse=True, graph_depth=2)
+→ Returns the service, its patterns, the event bus, the incident,
   and the policy — exactly what's needed, nothing extra.
 ```
 

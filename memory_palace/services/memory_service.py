@@ -1,17 +1,17 @@
 """
-Memory service for Claude Memory Palace.
+Memory service for Memory Palace.
 
 Provides functions for storing, recalling, archiving, and managing memories.
 """
 
-from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List, Optional, Tuple, Union
 import os
 import math
 
 from sqlalchemy import func, or_, String
 
-from memory_palace.models import Memory, MemoryEdge
+from memory_palace.models import Memory, MemoryEdge, _normalize_projects, _project_contains, _projects_overlap
 from memory_palace.database import get_session
 from memory_palace.embeddings import get_embedding, cosine_similarity
 from memory_palace.config_v2 import get_auto_link_config, get_instances, is_postgres
@@ -49,7 +49,14 @@ def _get_retrieval_weights() -> Tuple[float, float, float]:
     return alpha, beta, gamma
 
 
-def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int = 1) -> Dict[str, Any]:
+def _get_graph_context_for_memories(
+    db,
+    memories: List[Memory],
+    max_depth: int = 1,
+    direction: Optional[str] = None,
+    relation_types: Optional[List[str]] = None,
+    min_strength: Optional[float] = None
+) -> Dict[str, Any]:
     """
     Fetch deduplicated graph context for a list of memories using BFS frontier expansion.
 
@@ -60,6 +67,9 @@ def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int =
         db: Database session
         memories: List of Memory objects to fetch graph context for
         max_depth: How many hops to follow (1 = immediate edges, 2 = edges of edges, etc.)
+        direction: "outgoing", "incoming", or None for both
+        relation_types: List of relation types to follow (optional - all if None)
+        min_strength: Minimum edge strength to follow (optional)
 
     Returns:
         {"nodes": {id: subject, ...}, "edges": [{source, target, type, strength}, ...]}
@@ -69,7 +79,7 @@ def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int =
         return {}
 
     # Clamp depth to sensible range
-    max_depth = max(1, min(max_depth, 3))
+    max_depth = max(1, min(max_depth, 5))
 
     nodes: Dict[str, str] = {}  # "id" -> subject (dedup registry, string keys for TOON compat)
     edges: List[Dict[str, Any]] = []  # flat edge list
@@ -84,9 +94,37 @@ def _get_graph_context_for_memories(db, memories: List[Memory], max_depth: int =
         if not frontier_ids:
             break  # No new nodes to explore
 
-        # Batch fetch outgoing + incoming edges for current frontier
-        outgoing = db.query(MemoryEdge).filter(MemoryEdge.source_id.in_(frontier_ids)).all()
-        incoming = db.query(MemoryEdge).filter(MemoryEdge.target_id.in_(frontier_ids)).all()
+        # Batch fetch outgoing + incoming edges for current frontier based on direction
+        if direction == "outgoing":
+            outgoing = db.query(MemoryEdge).filter(MemoryEdge.source_id.in_(frontier_ids))
+            if relation_types:
+                outgoing = outgoing.filter(MemoryEdge.relation_type.in_(relation_types))
+            if min_strength is not None:
+                outgoing = outgoing.filter(MemoryEdge.strength >= min_strength)
+            outgoing = outgoing.all()
+            incoming = []
+        elif direction == "incoming":
+            incoming = db.query(MemoryEdge).filter(MemoryEdge.target_id.in_(frontier_ids))
+            if relation_types:
+                incoming = incoming.filter(MemoryEdge.relation_type.in_(relation_types))
+            if min_strength is not None:
+                incoming = incoming.filter(MemoryEdge.strength >= min_strength)
+            incoming = incoming.all()
+            outgoing = []
+        else:  # both or None
+            outgoing = db.query(MemoryEdge).filter(MemoryEdge.source_id.in_(frontier_ids))
+            if relation_types:
+                outgoing = outgoing.filter(MemoryEdge.relation_type.in_(relation_types))
+            if min_strength is not None:
+                outgoing = outgoing.filter(MemoryEdge.strength >= min_strength)
+            outgoing = outgoing.all()
+
+            incoming = db.query(MemoryEdge).filter(MemoryEdge.target_id.in_(frontier_ids))
+            if relation_types:
+                incoming = incoming.filter(MemoryEdge.relation_type.in_(relation_types))
+            if min_strength is not None:
+                incoming = incoming.filter(MemoryEdge.strength >= min_strength)
+            incoming = incoming.all()
 
         next_frontier: set = set()
         new_referenced_ids: set = set()
@@ -167,19 +205,19 @@ def _find_similar_memories(
     db,
     embedding: List[float],
     exclude_id: int,
-    project: Optional[str] = None,
+    projects: Optional[List[str]] = None,
     threshold: float = 0.675,
 ) -> List[Tuple[int, float]]:
     """
     Find memories similar to the given embedding.
-    
+
     Args:
         db: Database session
         embedding: The embedding vector to compare against
         exclude_id: Memory ID to exclude (the new memory itself)
-        project: If set, only match memories in this project
+        projects: If set, only match memories in these projects
         threshold: Minimum cosine similarity to include
-    
+
     Returns:
         List of (memory_id, similarity_score) tuples, sorted by similarity descending.
         No hard cap — caller is responsible for tiering by confidence.
@@ -190,19 +228,19 @@ def _find_similar_memories(
         Memory.is_archived == False,
         Memory.embedding.isnot(None)
     )
-    
-    if project:
-        query = query.filter(Memory.project == project)
-    
+
+    if projects:
+        query = query.filter(_projects_overlap(projects))
+
     # Fetch candidates and score them
     candidates = query.all()
     scored = []
-    
+
     for memory in candidates:
         similarity = cosine_similarity(embedding, memory.embedding)
         if similarity >= threshold:
             scored.append((memory.id, similarity))
-    
+
     # Sort by similarity (highest first)
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
@@ -215,8 +253,8 @@ def remember(
     subject: Optional[str] = None,
     keywords: Optional[List[str]] = None,
     tags: Optional[List[str]] = None,
-    importance: int = 5,
-    project: str = "life",
+    foundational: bool = False,
+    project: Union[str, List[str]] = "life",
     source_type: str = "explicit",
     source_context: Optional[str] = None,
     source_session_id: Optional[str] = None,
@@ -235,8 +273,8 @@ def remember(
         subject: What/who this memory is about (optional but recommended)
         keywords: List of keywords for searchability
         tags: Freeform organizational tags (separate from keywords)
-        importance: 1-10, higher = more important (default 5)
-        project: Project this memory belongs to (default "life" for non-project memories)
+        foundational: True if this is a foundational/core memory (default False)
+        project: Project this memory belongs to (default "life" for non-project memories). Can be a string or list of strings.
         source_type: How this memory was created (conversation, explicit, inferred, observation)
         source_context: Snippet of original context
         source_session_id: Link back to conversation session
@@ -262,18 +300,18 @@ def remember(
         if source_type not in VALID_SOURCE_TYPES:
             return {"error": f"Invalid source_type. Must be one of: {VALID_SOURCE_TYPES}"}
 
-        # Clamp importance to valid range
-        importance = max(1, min(10, importance))
+        # Normalize project parameter to list
+        projects = _normalize_projects(project)
 
         memory = Memory(
             instance_id=instance_id,
-            project=project,
+            projects=projects,
             memory_type=memory_type,
             content=content,
             subject=subject,
             keywords=keywords,
             tags=tags,
-            importance=importance,
+            foundational=foundational,
             source_type=source_type,
             source_context=source_context,
             source_session_id=source_session_id
@@ -300,7 +338,7 @@ def remember(
 
         # Track created links
         links_created = []
-        
+
         # Handle explicit supersession
         if supersedes_id is not None:
             old_memory = db.query(Memory).filter(Memory.id == supersedes_id).first()
@@ -312,11 +350,11 @@ def remember(
                     relation_type="supersedes",
                     strength=1.0,
                     bidirectional=False,
-                    edge_metadata={"superseded_at": datetime.utcnow().isoformat()},
+                    edge_metadata={"superseded_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat()},
                     created_by=instance_id
                 )
                 db.add(edge)
-                
+
                 # Archive the old memory
                 if not old_memory.is_archived:
                     old_memory.is_archived = True
@@ -324,7 +362,7 @@ def remember(
                         old_memory.source_context += f"\n[SUPERSEDED by #{memory.id}]"
                     else:
                         old_memory.source_context = f"[SUPERSEDED by #{memory.id}]"
-                
+
                 db.commit()
                 links_created.append({
                     "target": supersedes_id,
@@ -332,34 +370,35 @@ def remember(
                     "type": "supersedes",
                     "archived_old": True
                 })
-        
+
         # Auto-link by similarity if enabled and we have an embedding
         auto_link_config = get_auto_link_config()
         should_auto_link = auto_link if auto_link is not None else auto_link_config["enabled"]
-        
+
         # Track suggested (sub-threshold) links separately
         suggested_links = []
-        
+
         if should_auto_link and embedding:
             link_threshold = auto_link_config["link_threshold"]
             suggest_threshold = auto_link_config["suggest_threshold"]
             max_suggestions = auto_link_config["max_suggestions"]
-            
+
             # Find all similar memories down to the suggest threshold
-            similar_project = project if auto_link_config["same_project_only"] else None
+            # Scoped to same project per auto_link config
+            similar_projects = projects if auto_link_config["same_project_only"] else None
             similar = _find_similar_memories(
                 db,
                 embedding,
                 memory.id,
-                project=similar_project,
+                projects=similar_projects,
                 threshold=suggest_threshold,
             )
-            
+
             # Split into auto-link tier (>= link_threshold) and suggest tier
             auto_tier = [(tid, score) for tid, score in similar if score >= link_threshold]
             suggest_tier = [(tid, score) for tid, score in similar
                            if suggest_threshold <= score < link_threshold][:max_suggestions]
-            
+
             # Determine if we should classify edge types
             should_classify = auto_link_config.get("classify_edges", True)
 
@@ -421,7 +460,7 @@ def remember(
                     "type": edge_type,
                     "score": round(score, 4)
                 })
-            
+
             # Suggest tier: surface for human review, no edges created
             for target_id, score in suggest_tier:
                 if target_id == supersedes_id:
@@ -431,7 +470,7 @@ def remember(
                     "target_subject": target_subjects.get(target_id, "(no subject)"),
                     "score": round(score, 4)
                 })
-            
+
             if auto_tier:
                 db.commit()
 
@@ -450,16 +489,16 @@ def remember(
                 "It will not appear in memory_recall results until embedding is backfilled. "
                 "Tagged with 'embedding_failed' for easy discovery."
             )
-        
+
         if instance_warning:
             result["instance_warning"] = instance_warning
 
         if links_created:
             result["links_created"] = links_created
-        
+
         if suggested_links:
             result["suggested_links"] = suggested_links
-        
+
         return result
     finally:
         db.close()
@@ -586,10 +625,10 @@ def _format_memories_as_text(memories: List[Any]) -> str:
 def recall(
     query: str,
     instance_id: Optional[str] = None,
-    project: Optional[str] = None,
+    project: Optional[Union[str, List[str]]] = None,
     memory_type: Optional[str] = None,
     subject: Optional[str] = None,
-    min_importance: Optional[int] = None,
+    min_foundational: Optional[bool] = None,
     include_archived: bool = False,
     limit: int = 20,
     detail_level: str = "summary",
@@ -605,9 +644,11 @@ def recall(
         query: Search query (used for semantic similarity or keyword matching)
         instance_id: Filter by instance (optional)
         project: Filter by project (optional, e.g., "memory-palace", "wordleap", "life")
-        memory_type: Filter by type (optional)
+                Can be a string or list of strings. None = no project filter.
+        memory_type: Filter by type (optional). Supports wildcards like "code_*" for
+                    pattern matching (replaces separate code_recall tool).
         subject: Filter by subject (optional)
-        min_importance: Only return memories with importance >= this
+        min_foundational: Only return foundational memories if True (optional)
         include_archived: Include archived memories (default False)
         limit: Maximum memories to return (default 20)
         detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=True)
@@ -628,6 +669,9 @@ def recall(
     """
     db = get_session()
     try:
+        # Get weights from config (not passable per-call anymore)
+        alpha, beta, gamma = _get_retrieval_weights()
+
         # Clamp graph_top_n to sensible range
         graph_top_n = max(0, min(graph_top_n, limit))
 
@@ -642,18 +686,27 @@ def recall(
         if instance_id:
             base_query = base_query.filter(Memory.instance_id == instance_id)
 
-        # Filter by project if specified
-        if project:
-            base_query = base_query.filter(Memory.project == project)
+        # Filter by project if specified (supports list or string)
+        if project is not None:
+            if isinstance(project, list):
+                base_query = base_query.filter(_projects_overlap(project))
+            else:
+                base_query = base_query.filter(_project_contains(project))
 
+        # Filter by memory_type (supports wildcards like "code_*")
         if memory_type:
-            base_query = base_query.filter(Memory.memory_type == memory_type)
+            if "*" in memory_type:
+                # Convert wildcard to SQL LIKE pattern
+                like_pattern = memory_type.replace("*", "%")
+                base_query = base_query.filter(Memory.memory_type.like(like_pattern))
+            else:
+                base_query = base_query.filter(Memory.memory_type == memory_type)
 
         if subject:
             base_query = base_query.filter(Memory.subject.ilike(f"%{subject}%"))
 
-        if min_importance:
-            base_query = base_query.filter(Memory.importance >= min_importance)
+        if min_foundational is not None and min_foundational:
+            base_query = base_query.filter(Memory.foundational == True)
 
         # Try semantic search first
         search_method = "semantic"
@@ -709,9 +762,6 @@ def recall(
                         candidates.append(memory)
 
             # Centrality-weighted re-ranking
-            # Get weights from environment
-            alpha, beta, gamma = _get_retrieval_weights()
-
             # Compute normalized access counts (log transform to prevent Matthew effect)
             access_counts = {m.id: m.access_count for m in candidates}
             max_access = max(access_counts.values()) if access_counts.values() else 0
@@ -773,21 +823,7 @@ def recall(
             # Get all keyword matches (no limit yet - we'll re-rank)
             candidates = base_query.all()
 
-            # Without semantic similarity, we use importance + access + centrality
-            # Get weights (note: alpha won't be used, so redistribute to beta/gamma)
-            _, beta, gamma = _get_retrieval_weights()
-
-            # Redistribute similarity weight to access and centrality (50/50)
-            alpha = 0.0  # No semantic signal
-            # Renormalize beta and gamma
-            if beta + gamma > 0:
-                total = beta + gamma
-                beta = beta / total
-                gamma = gamma / total
-            else:
-                beta = 0.5
-                gamma = 0.5
-
+            # Without semantic similarity, we use foundational + access + centrality
             # Compute normalized access counts (log transform)
             access_counts = {m.id: m.access_count for m in candidates}
             max_access = max(access_counts.values()) if access_counts.values() else 0
@@ -805,22 +841,22 @@ def recall(
             candidate_ids = [m.id for m in candidates]
             normalized_centrality = _compute_in_degree_centrality(db, candidate_ids)
 
-            # Compute normalized importance (0-1 range, importance is 1-10)
-            normalized_importance = {m.id: (m.importance - 1) / 9 for m in candidates}
+            # Compute normalized foundational (binary: 1 or 0)
+            normalized_foundational = {m.id: (1.0 if m.foundational else 0.0) for m in candidates}
 
             # Compute combined scores
-            # In keyword mode: score = (importance × 0.4) + (access × beta) + (centrality × gamma)
-            # Importance gets a boost since we have no semantic signal
+            # In keyword mode: score = (foundational × 0.4) + (access × beta) + (centrality × gamma)
+            # Foundational gets a boost since we have no semantic signal
             combined_scores = []
             for memory in candidates:
                 mid = memory.id
 
-                importance_score = normalized_importance.get(mid, 0.0)
+                foundational_score = normalized_foundational.get(mid, 0.0)
                 access_score = normalized_access.get(mid, 0.0)
                 centrality_score = normalized_centrality.get(mid, 0.0)
 
-                # Weighted combination (importance gets 40%, rest split by beta/gamma ratio)
-                combined = (0.4 * importance_score) + (beta * access_score) + (gamma * centrality_score)
+                # Weighted combination (foundational gets 40%, rest split by beta/gamma ratio)
+                combined = (0.4 * foundational_score) + (beta * access_score) + (gamma * centrality_score)
 
                 combined_scores.append((memory, combined))
 
@@ -833,7 +869,7 @@ def recall(
 
         # Update access tracking for retrieved memories
         for memory in memories:
-            memory.last_accessed_at = datetime.utcnow()
+            memory.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             memory.access_count += 1
         db.commit()
 
@@ -895,12 +931,175 @@ def recall(
         db.close()
 
 
+def archive_memory(
+    memory_ids: Optional[List[int]] = None,
+    older_than_days: Optional[int] = None,
+    max_access_count: Optional[int] = None,
+    project: Optional[str] = None,
+    memory_type: Optional[str] = None,
+    centrality_protection: bool = True,
+    min_centrality_threshold: int = 5,
+    dry_run: bool = True,
+    reason: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Archive memories (soft delete). Replaces both old forget() and batch_archive_memories().
+
+    Safety: dry_run=True by default. Returns preview of what would be archived.
+
+    Args:
+        memory_ids: List of memory IDs to archive (if provided, other filters ignored)
+        older_than_days: Age filter (archive memories older than N days)
+        max_access_count: Archive memories with access_count <= N
+        project: Project filter
+        memory_type: Type filter
+        centrality_protection: If True, protect high-centrality memories from archival (default True)
+        min_centrality_threshold: In-degree count for centrality protection (default 5)
+        dry_run: Preview only (default True for safety)
+        reason: Optional reason for archiving (added to source_context)
+
+    Returns:
+        Dict with archived_count, skipped_count (foundational), warnings (high centrality), details
+    """
+    db = get_session()
+    try:
+        # Build query
+        if memory_ids:
+            # Explicit ID list
+            candidates = db.query(Memory).filter(
+                Memory.id.in_(memory_ids),
+                Memory.is_archived == False
+            ).all()
+        else:
+            # Build filter query
+            query = db.query(Memory).filter(Memory.is_archived == False)
+
+            if older_than_days:
+                cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=older_than_days)
+                query = query.filter(Memory.created_at < cutoff_date)
+
+            if max_access_count is not None:
+                query = query.filter(Memory.access_count <= max_access_count)
+
+            if project:
+                if isinstance(project, list):
+                    query = query.filter(_projects_overlap(project))
+                else:
+                    query = query.filter(_project_contains(project))
+
+            if memory_type:
+                query = query.filter(Memory.memory_type == memory_type)
+
+            candidates = query.all()
+
+        # Apply foundational protection and centrality protection
+        to_archive = []
+        skipped_foundational = []
+        skipped_centrality = []
+        warnings = []
+
+        for memory in candidates:
+            # Skip foundational memories
+            if memory.foundational:
+                skipped_foundational.append({
+                    "id": memory.id,
+                    "subject": memory.subject or "(no subject)",
+                    "reason": "foundational memory - cannot archive"
+                })
+                continue
+
+            # Check centrality
+            in_degree = db.query(func.count(MemoryEdge.id)).filter(
+                MemoryEdge.target_id == memory.id
+            ).scalar() or 0
+
+            # Apply centrality protection if enabled
+            if centrality_protection and in_degree >= min_centrality_threshold:
+                age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - memory.created_at).days
+                skipped_centrality.append({
+                    "id": memory.id,
+                    "subject": memory.subject or "(no subject)",
+                    "in_degree": in_degree,
+                    "age_days": age_days,
+                    "reason": f"protected by centrality (in-degree={in_degree} >= {min_centrality_threshold})"
+                })
+                continue
+
+            # Warn if centrality is notable (but lower than protection threshold)
+            if in_degree >= 3:
+                age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - memory.created_at).days
+                warnings.append({
+                    "id": memory.id,
+                    "subject": memory.subject or "(no subject)",
+                    "in_degree": in_degree,
+                    "age_days": age_days,
+                    "warning": f"Notable centrality (in-degree={in_degree})"
+                })
+
+            age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - memory.created_at).days
+            to_archive.append({
+                "id": memory.id,
+                "subject": memory.subject or "(no subject)",
+                "type": memory.memory_type,
+                "age_days": age_days,
+                "access_count": memory.access_count,
+                "in_degree": in_degree
+            })
+
+        # Execute archival if not dry run
+        if not dry_run:
+            archived_count = 0
+            for mem_info in to_archive:
+                memory = db.query(Memory).filter(Memory.id == mem_info["id"]).first()
+                if memory:
+                    memory.is_archived = True
+                    if reason:
+                        if memory.source_context:
+                            memory.source_context = f"{memory.source_context}\n[ARCHIVED: {reason}]"
+                        else:
+                            memory.source_context = f"[ARCHIVED: {reason}]"
+                    archived_count += 1
+
+            db.commit()
+
+            return {
+                "archived_count": archived_count,
+                "skipped_foundational_count": len(skipped_foundational),
+                "skipped_centrality_count": len(skipped_centrality),
+                "warning_count": len(warnings),
+                "details": {
+                    "archived": to_archive,
+                    "skipped_foundational": skipped_foundational,
+                    "skipped_centrality": skipped_centrality,
+                    "warnings": warnings
+                }
+            }
+        else:
+            # Dry run - preview only
+            return {
+                "would_archive": len(to_archive),
+                "would_skip_foundational": len(skipped_foundational),
+                "would_skip_centrality": len(skipped_centrality),
+                "warning_count": len(warnings),
+                "details": {
+                    "would_archive": to_archive,
+                    "skipped_foundational": skipped_foundational,
+                    "skipped_centrality": skipped_centrality,
+                    "warnings": warnings
+                },
+                "note": "DRY RUN - no memories were archived. Set dry_run=False to execute."
+            }
+    finally:
+        db.close()
+
+
+# Legacy compatibility wrapper
 def forget(
     memory_id: int,
     reason: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Archive a memory (soft delete).
+    Archive a memory (soft delete). Legacy wrapper around archive_memory().
 
     Args:
         memory_id: ID of the memory to archive
@@ -909,25 +1108,22 @@ def forget(
     Returns:
         Compact confirmation string
     """
-    db = get_session()
-    try:
-        memory = db.query(Memory).filter(Memory.id == memory_id).first()
-        if not memory:
-            return {"error": f"Memory {memory_id} not found"}
+    result = archive_memory(
+        memory_ids=[memory_id],
+        dry_run=False,
+        reason=reason
+    )
 
-        subject_info = f" ({memory.subject})" if memory.subject else ""
-        memory.is_archived = True
-        if reason and memory.source_context:
-            memory.source_context = f"{memory.source_context}\n[ARCHIVED: {reason}]"
-        elif reason:
-            memory.source_context = f"[ARCHIVED: {reason}]"
-
-        db.commit()
-
-        # Compact response
+    if result.get("archived_count", 0) > 0:
+        mem_info = result["details"]["archived"][0]
+        subject_info = f" ({mem_info['subject']})" if mem_info['subject'] != "(no subject)" else ""
         return {"message": f"Archived memory {memory_id}{subject_info}"}
-    finally:
-        db.close()
+    elif result.get("skipped_foundational_count", 0) > 0:
+        return {"error": f"Memory {memory_id} is foundational and cannot be archived"}
+    elif result.get("skipped_centrality_count", 0) > 0:
+        return {"error": f"Memory {memory_id} is protected by centrality and cannot be archived"}
+    else:
+        return {"error": f"Memory {memory_id} not found or already archived"}
 
 
 def get_memory_stats() -> Dict[str, Any]:
@@ -961,14 +1157,12 @@ def get_memory_stats() -> Dict[str, Any]:
         for instance, count in instance_counts:
             by_instance[instance] = count
 
-        # By project
+        # By project (explode arrays Python-side)
         by_project = {}
-        project_counts = db.query(
-            Memory.project,
-            func.count(Memory.id)
-        ).filter(Memory.is_archived == False).group_by(Memory.project).all()
-        for project, count in project_counts:
-            by_project[project or "life"] = count
+        active_memories = db.query(Memory).filter(Memory.is_archived == False).all()
+        for memory in active_memories:
+            for proj in (memory.projects or ["life"]):
+                by_project[proj] = by_project.get(proj, 0) + 1
 
         # Most accessed (top 5)
         most_accessed = db.query(Memory).filter(
@@ -980,9 +1174,10 @@ def get_memory_stats() -> Dict[str, Any]:
             Memory.is_archived == False
         ).order_by(Memory.created_at.desc()).limit(5).all()
 
-        # Average importance
-        avg_importance = db.query(func.avg(Memory.importance)).filter(
-            Memory.is_archived == False
+        # Foundational count
+        foundational_count = db.query(func.count(Memory.id)).filter(
+            Memory.is_archived == False,
+            Memory.foundational == True
         ).scalar()
 
         # Trimmed response: most_accessed and recently_added as compact ID + subject pairs
@@ -990,10 +1185,10 @@ def get_memory_stats() -> Dict[str, Any]:
             "total_memories": total,
             "active_memories": total_active,
             "archived_memories": total_archived,
+            "foundational_memories": foundational_count,
             "by_type": by_type,
             "by_instance": by_instance,
             "by_project": by_project,
-            "average_importance": round(avg_importance, 2) if avg_importance else 0,
             "most_accessed": [f"#{m.id}: {m.subject or '(no subject)'}" for m in most_accessed],
             "recently_added": [f"#{m.id}: {m.subject or '(no subject)'}" for m in recent]
         }
@@ -1073,16 +1268,28 @@ def get_memory_by_id(
     memory_id: int,
     detail_level: str = "verbose",
     include_graph: bool = True,
-    graph_depth: int = 1
+    graph_depth: int = 0,
+    traverse: bool = False,
+    max_depth: int = 3,
+    direction: Optional[str] = None,
+    relation_types: Optional[List[str]] = None,
+    min_strength: Optional[float] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Get a single memory by ID.
+    Get a single memory by ID with optional graph traversal.
+
+    Absorbs functionality from graph_service.traverse_graph() and get_related_memories().
 
     Args:
         memory_id: ID of the memory to retrieve
         detail_level: "summary" for condensed, "verbose" for full content
         include_graph: Include graph context (default True)
-        graph_depth: How many hops to follow in graph context (1-3, default 1)
+        graph_depth: How many hops to follow in graph context (0 = no graph, 1-3 = context mode)
+        traverse: If True, do BFS traversal instead of context mode
+        max_depth: Max depth for BFS traverse (1-5, only used if traverse=True)
+        direction: "outgoing", "incoming", or None for both (only used if traverse=True or include_graph=True)
+        relation_types: Filter edges by type (only used if traverse=True or include_graph=True)
+        min_strength: Filter edges by minimum strength (only used if traverse=True or include_graph=True)
 
     Returns:
         {"memory": dict, "graph_context": dict (optional)} if found, None if not found
@@ -1095,7 +1302,7 @@ def get_memory_by_id(
             return None
 
         # Update access tracking
-        memory.last_accessed_at = datetime.utcnow()
+        memory.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         memory.access_count += 1
         db.commit()
 
@@ -1103,9 +1310,31 @@ def get_memory_by_id(
         result = {"memory": memory.to_dict(detail_level=detail_level)}
 
         # Fetch graph context if requested
-        graph_context = _get_graph_context_for_memories(db, [memory], max_depth=graph_depth) if include_graph else {}
-        if graph_context:
-            result["graph_context"] = graph_context
+        if include_graph and graph_depth > 0:
+            if traverse:
+                # BFS traversal mode
+                from memory_palace.services.graph_service import traverse_graph
+                traversal = traverse_graph(
+                    start_id=memory_id,
+                    max_depth=max_depth,
+                    relation_types=relation_types,
+                    direction=direction or "outgoing",
+                    min_strength=min_strength or 0.0,
+                    include_archived=False,
+                    detail_level=detail_level
+                )
+                result["traversal"] = traversal
+            else:
+                # Context mode (adjacency list)
+                graph_context = _get_graph_context_for_memories(
+                    db, [memory],
+                    max_depth=graph_depth,
+                    direction=direction,
+                    relation_types=relation_types,
+                    min_strength=min_strength
+                )
+                if graph_context:
+                    result["graph_context"] = graph_context
 
         return result
     finally:
@@ -1148,7 +1377,7 @@ def get_memories_by_ids(
 
         # Update access tracking for all found memories
         for memory in memories:
-            memory.last_accessed_at = datetime.utcnow()
+            memory.last_accessed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             memory.access_count += 1
         db.commit()
 
@@ -1185,12 +1414,89 @@ def get_memories_by_ids(
         db.close()
 
 
+def get_recent_memories(
+    limit: int = 20,
+    verbose: bool = False,
+    project: Optional[Union[str, List[str]]] = None,
+    memory_type: Optional[str] = None,
+    instance_id: Optional[str] = None,
+    include_archived: bool = False,
+) -> Dict[str, Any]:
+    """
+    Get the most recent memories, ordered by creation time descending.
+
+    Default (verbose=False) returns title-card format: id, subject, memory_type,
+    project, created_at. Verbose mode returns full to_dict() output.
+
+    Args:
+        limit: Number of memories to return (default 20, max 200)
+        verbose: If False (default), return title-only compact list.
+                 If True, return full memory details via to_dict(verbose).
+        project: Filter by project — string for single, list for union (optional)
+        memory_type: Filter by memory type, supports wildcards like "code_*" (optional)
+        instance_id: Filter by instance (optional)
+        include_archived: Include archived memories (default False)
+
+    Returns:
+        {"memories": list[dict], "count": int, "total_available": int}
+    """
+    limit = min(limit, 200)  # Cap at 200
+    db = get_session()
+    try:
+        query = db.query(Memory)
+
+        if not include_archived:
+            query = query.filter(Memory.is_archived == False)
+
+        if project is not None:
+            if isinstance(project, list):
+                query = query.filter(_projects_overlap(project))
+            else:
+                query = query.filter(_project_contains(project))
+
+        if memory_type is not None:
+            if "*" in memory_type:
+                pattern = memory_type.replace("*", "%")
+                query = query.filter(Memory.memory_type.like(pattern))
+            else:
+                query = query.filter(Memory.memory_type == memory_type)
+
+        if instance_id is not None:
+            query = query.filter(Memory.instance_id == instance_id)
+
+        total_available = query.count()
+        memories = query.order_by(Memory.created_at.desc()).limit(limit).all()
+
+        if verbose:
+            memory_list = [m.to_dict(detail_level="verbose") for m in memories]
+        else:
+            memory_list = [
+                {
+                    "id": m.id,
+                    "subject": m.subject,
+                    "memory_type": m.memory_type,
+                    "project": m.projects,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                    "foundational": m.foundational,
+                }
+                for m in memories
+            ]
+
+        return {
+            "memories": memory_list,
+            "count": len(memory_list),
+            "total_available": total_available,
+        }
+    finally:
+        db.close()
+
+
 def update_memory(
     memory_id: int,
     content: Optional[str] = None,
     subject: Optional[str] = None,
     keywords: Optional[List[str]] = None,
-    importance: Optional[int] = None,
+    foundational: Optional[bool] = None,
     memory_type: Optional[str] = None,
     regenerate_embedding: bool = True
 ) -> Dict[str, Any]:
@@ -1202,7 +1508,7 @@ def update_memory(
         content: New content (if changing)
         subject: New subject (if changing)
         keywords: New keywords (if changing)
-        importance: New importance (if changing)
+        foundational: New foundational status (if changing)
         memory_type: New type (if changing)
         regenerate_embedding: Whether to regenerate embedding after update (default True)
 
@@ -1233,8 +1539,8 @@ def update_memory(
         if keywords is not None:
             memory.keywords = keywords
 
-        if importance is not None:
-            memory.importance = max(1, min(10, importance))
+        if foundational is not None:
+            memory.foundational = foundational
 
         db.commit()
 
@@ -1337,7 +1643,7 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):"
 
             keywords = [w.strip() for w in subject.split() if len(w) > 3] if subject else []
             high_importance_types = ["insight", "decision", "architecture", "blocker", "gotcha"]
-            importance = 7 if mem_type in high_importance_types else 5
+            foundational = mem_type in high_importance_types
 
             if not dry_run:
                 memory = Memory(
@@ -1346,14 +1652,14 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):"
                     content=content,
                     subject=subject,
                     keywords=keywords if keywords else None,
-                    importance=importance,
+                    foundational=foundational,
                     source_type="conversation",
                     source_context="Extracted from transcript via LLM analysis",
                     source_session_id=session_id
                 )
                 db.add(memory)
 
-            extracted_memories.append({"type": mem_type, "subject": subject, "importance": importance})
+            extracted_memories.append({"type": mem_type, "subject": subject, "foundational": foundational})
 
         if not extracted_memories:
             return {"success": False, "error": "No valid memories extracted", "llm_raw_response": response}

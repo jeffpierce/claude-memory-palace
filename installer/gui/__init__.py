@@ -1,1 +1,1 @@
-# GUI installer for Claude Memory Palace
+# GUI installer for Memory Palace

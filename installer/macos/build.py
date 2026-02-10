@@ -67,7 +67,7 @@ OPTIONS = {{
     ],
     "plist": {{
         "CFBundleName": "Memory Palace Setup",
-        "CFBundleDisplayName": "Claude Memory Palace Setup",
+        "CFBundleDisplayName": "Memory Palace Setup",
         "CFBundleIdentifier": "com.memorypalace.installer",
         "CFBundleVersion": "2.0.0",
         "CFBundleShortVersionString": "2.0",
@@ -136,7 +136,7 @@ def main():
         print("This build script must be run on macOS.")
         sys.exit(1)
 
-    print("Claude Memory Palace — macOS Installer Builder\n")
+    print("Memory Palace — macOS Installer Builder\n")
 
     if not check_py2app():
         print("Installing py2app...")

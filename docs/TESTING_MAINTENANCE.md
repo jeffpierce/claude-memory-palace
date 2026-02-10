@@ -2,7 +2,7 @@
 
 This guide shows how to test and use the three new maintenance tools:
 - `memory_audit` - Health checks and issue detection
-- `memory_batch_archive` - Bulk archival with centrality protection
+- `memory_archive` - Bulk archival with centrality protection
 - `memory_reembed` - Regenerate embeddings
 
 ## Quick Start
@@ -18,9 +18,9 @@ python examples/test_maintenance.py
 
 This runs all three tools in safe mode (dry_run=True) and shows what they would do.
 
-### Option 2: Via MCP (Claude Code)
+### Option 2: Via MCP (MCP Client)
 
-The tools are registered as MCP tools and available in any Claude Code session.
+The tools are registered as MCP tools and available in any MCP client session (e.g., Claude Code, Cursor, etc.).
 
 ## Testing Each Tool
 
@@ -49,9 +49,9 @@ print(f"Duplicates: {result['summary']['duplicates_found']}")
 print(f"Stale: {result['summary']['stale_found']}")
 ```
 
-**Test via MCP (Claude Code):**
+**Test via MCP:**
 
-Ask Claude:
+Ask your AI:
 > "Run a memory audit. Check for duplicates, stale memories, and missing embeddings."
 
 **Expected Output:**
@@ -93,7 +93,7 @@ Example:
 - Memory #167 (Sandy's identity): 128 in-degree → NEVER flagged as stale
 - Memory #156 (old test): 0 in-degree → Flagged as stale after 90 days
 
-### 2. memory_batch_archive - Bulk Archival
+### 2. memory_archive - Bulk Archival
 
 **What it does:** Archives multiple memories matching criteria, with centrality protection.
 
@@ -117,9 +117,9 @@ print(f"Would archive: {result['would_archive']} memories")
 print(f"Protected: {len(result['protected'])} memories")
 ```
 
-**Test via MCP (Claude Code):**
+**Test via MCP:**
 
-Ask Claude:
+Ask your AI:
 > "Show me what would happen if we archived all memories older than 180 days with low access. Use dry run mode."
 
 **Expected Output:**
@@ -212,9 +212,9 @@ print(f"Would re-embed: {result['would_reembed']} memories")
 print(f"Estimated time: {result['estimated_time_seconds']} seconds")
 ```
 
-**Test via MCP (Claude Code):**
+**Test via MCP:**
 
-Ask Claude:
+Ask your AI:
 > "How many memories would need re-embedding if we updated all embeddings older than 1 year?"
 
 **Execute (After Review):**
@@ -344,7 +344,7 @@ Check `failed_ids` in result. Common causes:
 - Embedding model not available
 - Memory content too large (rare)
 
-Run `memory_backfill_embeddings` to retry failures.
+Run `memory_reembed` to retry failures.
 
 ## Next Steps
 

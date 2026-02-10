@@ -1,5 +1,5 @@
 """
-Configuration for Claude Memory Palace.
+Configuration for Memory Palace.
 
 Handles paths, defaults, JSON config file, and environment-based overrides.
 Configuration is loaded from ~/.memory-palace/config.json with sensible defaults.

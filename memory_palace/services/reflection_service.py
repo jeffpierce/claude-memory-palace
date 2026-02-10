@@ -1,5 +1,5 @@
 """
-Reflection service for Claude Memory Palace.
+Reflection service for Memory Palace.
 
 Processes conversation transcripts and extracts memories worth keeping.
 Uses LLM for intelligent extraction with free-form memory types.
@@ -35,7 +35,7 @@ def _extract_memories_with_llm(
 
     Args:
         transcript: The transcript text to analyze
-        instance_id: Which Claude instance is doing the extraction
+        instance_id: Which instance is doing the extraction
         session_id: Optional session ID to link memories back to source
         db: Database session
         dry_run: If True, don't write to database
@@ -121,9 +121,9 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):'
         # Extract keywords from subject (simple approach)
         keywords = [w.strip() for w in subject.split() if len(w) > 3] if subject else []
 
-        # Default importance based on type - higher for actionable/architectural info
+        # Default foundational based on type - true for actionable/architectural info
         high_importance_types = ["insight", "relationship", "decision", "architecture", "blocker", "gotcha"]
-        importance = 7 if mem_type in high_importance_types else 5
+        foundational = mem_type in high_importance_types
 
         # Create the memory (skip db write in dry_run mode)
         if not dry_run:
@@ -133,7 +133,7 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):'
                 content=content,
                 subject=subject,
                 keywords=keywords if keywords else None,
-                importance=importance,
+                foundational=foundational,
                 source_type="conversation",
                 source_context="Extracted from transcript via LLM analysis",
                 source_session_id=session_id
@@ -145,7 +145,7 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):'
             "content": content,
             "subject": subject,
             "keywords": keywords,
-            "importance": importance,
+            "foundational": foundational,
             "extraction_method": "llm"
         })
 
@@ -169,7 +169,7 @@ def reflect(
     (no fallback to garbage rule-based extraction).
 
     Args:
-        instance_id: Which Claude instance is doing the reflection
+        instance_id: Which instance is doing the reflection
         transcript_path: Path to the transcript file to analyze
         session_id: Optional session ID to link memories back to source
         dry_run: If True, only report what would be stored without writing to database

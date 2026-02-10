@@ -1,29 +1,39 @@
 """
-SQLAlchemy models for Claude Memory Palace.
+SQLAlchemy models for Memory Palace.
 
-v2: Re-exports from models_v2 for PostgreSQL + pgvector support.
-For legacy SQLite models, see models_v1.py.
+v3: Re-exports from models_v3 with foundational memories and pubsub messaging.
+For v2 models, see models_v2.py. For legacy SQLite models, see models_v1.py.
 """
 
-# Re-export everything from v2
-from memory_palace.models_v2 import (
+# Re-export everything from v3
+from memory_palace.models_v3 import (
     Base,
     Memory,
     MemoryEdge,
-    HandoffMessage,
+    Message,
     RELATIONSHIP_TYPES,
     validate_relation_type,
     validate_relationship_type,  # Legacy alias
     HAS_PGVECTOR,
+    _normalize_projects,
+    _project_contains,
+    _projects_overlap,
 )
+
+# Backward compatibility alias
+HandoffMessage = Message
 
 __all__ = [
     "Base",
     "Memory",
     "MemoryEdge",
-    "HandoffMessage",
+    "Message",
+    "HandoffMessage",  # Legacy alias
     "RELATIONSHIP_TYPES",
     "validate_relation_type",
     "validate_relationship_type",
     "HAS_PGVECTOR",
+    "_normalize_projects",
+    "_project_contains",
+    "_projects_overlap",
 ]
