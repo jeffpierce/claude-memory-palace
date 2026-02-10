@@ -7,7 +7,7 @@ Changes:
    - Migrate importance >= 8 to foundational = True
    - Remove importance column and its constraints/indexes
 
-2. handoff_messages table → messages table:
+2. handoff_messages table -> messages table:
    - Rename table
    - Add pubsub columns: channel, delivery_status, delivered_at, expires_at, priority
    - Add new indexes for pubsub queries
@@ -214,7 +214,7 @@ def migrate_messages_table(engine: Engine) -> None:
     3. Add new columns for pubsub support
     4. Create new indexes
     """
-    print("Migrating handoff_messages → messages table...")
+    print("Migrating handoff_messages -> messages table...")
 
     with engine.connect() as conn:
         has_messages = _table_exists(engine, "messages")
@@ -227,6 +227,34 @@ def migrate_messages_table(engine: Engine) -> None:
         elif not has_messages and not has_handoff:
             print("  No messages or handoff_messages table found, skipping")
             return
+        elif has_handoff and has_messages:
+            # Both tables exist — init_db() created messages from v3 models
+            # while handoff_messages still has old data. Merge and drop.
+            print("  Both handoff_messages and messages tables exist")
+            print("  Merging old data into messages table...")
+
+            # Get columns that exist in both tables for safe copy
+            insp = inspect(engine)
+            handoff_cols = {c["name"] for c in insp.get_columns("handoff_messages")}
+            messages_cols = {c["name"] for c in insp.get_columns("messages")}
+            shared_cols = handoff_cols & messages_cols - {"id"}  # Skip id to avoid conflicts
+
+            if shared_cols:
+                cols_str = ", ".join(sorted(shared_cols))
+                # Copy rows from handoff_messages that aren't already in messages
+                conn.execute(text(f"""
+                    INSERT INTO messages ({cols_str})
+                    SELECT {cols_str} FROM handoff_messages h
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM messages m WHERE m.id = h.id
+                    )
+                """))
+                conn.commit()
+                print(f"  Merged data ({len(shared_cols)} shared columns)")
+
+            conn.execute(text("DROP TABLE handoff_messages"))
+            conn.commit()
+            print("  Dropped handoff_messages table")
         elif has_handoff:
             # Need to migrate from handoff_messages to messages
             if _is_postgres(engine):
@@ -340,7 +368,7 @@ def migrate(database_url: Optional[str] = None) -> bool:
         True if migration succeeded, False otherwise
     """
     print("=" * 60)
-    print("Memory Palace v2 → v3 Migration")
+    print("Memory Palace v2 -> v3 Migration")
     print("=" * 60)
 
     try:
