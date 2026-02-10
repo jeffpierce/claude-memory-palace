@@ -51,7 +51,7 @@ memory-palace-mcp = "mcp_server.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["memory_palace*", "mcp_server*"]
+include = ["memory_palace*", "mcp_server*", "moltbook_tools*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

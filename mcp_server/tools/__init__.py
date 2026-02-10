@@ -25,6 +25,8 @@ from .code_recall import register_code_recall
 from .audit import register_audit
 from .batch_archive import register_batch_archive
 from .reembed import register_reembed
+from .moltbook_submit import register_moltbook_submit
+from .moltbook_qc import register_moltbook_qc
 
 
 def register_all_tools(mcp):
@@ -56,6 +58,9 @@ def register_all_tools(mcp):
     register_audit(mcp)
     register_batch_archive(mcp)
     register_reembed(mcp)
+    # Moltbook gateway
+    register_moltbook_submit(mcp)
+    register_moltbook_qc(mcp)
 
 
 __all__ = ["register_all_tools"]
