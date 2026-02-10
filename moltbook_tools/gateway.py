@@ -350,17 +350,6 @@ def submit(
         except ValueError:
             pass
 
-        # ── Challenge response (anti-human CAPTCHA) ──
-        if api_data.get("challenge"):
-            _log_submission(
-                session, session_id, action_type, content_hash,
-                content_normalized, "challenged",
-                api_response_code=response.status_code,
-                submolt=submolt, title=title, post_id=post_id,
-                parent_id=parent_id, qc_token=qc_token,
-            )
-            return api_data
-
         if response.status_code == 429:
             # Rate limited by server
             _log_submission(
@@ -379,6 +368,7 @@ def submit(
                 "success": False,
                 "error": f"Server rate limited (429).{retry_info}",
                 "api_response_code": 429,
+                "api_response": api_data,
             }
 
         if not api_data.get("success"):
@@ -395,6 +385,7 @@ def submit(
                 "success": False,
                 "error": f"API error: {error_msg}" + (f" Hint: {hint}" if hint else ""),
                 "api_response_code": response.status_code,
+                "api_response": api_data,
             }
 
         # Success — extract moltbook ID from response
@@ -423,6 +414,7 @@ def submit(
             "submission_id": log_entry.id,
             "moltbook_id": moltbook_id,
             "action_type": action_type,
+            "api_response": api_data,
         }
 
     finally:
