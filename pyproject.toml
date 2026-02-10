@@ -48,6 +48,7 @@ Issues = "https://github.com/jeffpierce/memory-palace/issues"
 
 [project.scripts]
 memory-palace-mcp = "mcp_server.server:main"
+memory-palace-migrate = "memory_palace.migrations.v2_to_v3:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

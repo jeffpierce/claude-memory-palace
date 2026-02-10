@@ -15,18 +15,13 @@ def register_unlink(mcp):
     async def memory_unlink(
         source_id: int,
         target_id: int,
-        relation_type: Optional[str] = None,
-        toon: Optional[bool] = None
+        relation_type: Optional[str] = None
     ) -> dict[str, Any]:
         """
         Remove relationship edge(s) between two memories.
 
-        If relation_type is specified, only removes that specific edge.
+        If relation_type is specified, only removes that edge.
         If relation_type is None, removes ALL edges from source to target.
-
-        Note: This only removes edges in the source->target direction.
-        To remove a bidirectional relationship, you may need to call twice
-        (once for each direction) if edges were created separately.
 
         Args:
             source_id: ID of the source memory

@@ -170,7 +170,7 @@ def code_remember(
             content=transpile_result["prose"],
             subject=transpile_result["subject"],
             keywords=keywords,
-            importance=5,
+            foundational=False,
             project=project,
             source_type="explicit",
             source_context=f"Indexed from: {canonical_path}"
@@ -191,7 +191,7 @@ def code_remember(
             content=code_content,
             subject=f"Source: {file_name}",
             keywords=[canonical_path, file_name],
-            importance=5,
+            foundational=False,
             source_type="explicit",
             source_context=f"Raw code from: {canonical_path}"
             # NOTE: No embedding field set - this memory is NOT embedded

@@ -1,7 +1,7 @@
 """
-MCP Server for Claude Memory Palace.
+MCP Server for Claude Memory Palace v2.0.
 
-Provides tools for memory storage, retrieval, and inter-instance handoff.
+Provides tools for memory storage, retrieval, and inter-instance messaging.
 
 Run with: python -m mcp_server.server
 Or: python mcp_server/server.py
@@ -15,13 +15,12 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from mcp.server import FastMCP
-import json
 
-from memory_palace.database import init_db
+from memory_palace.database import init_db, get_engine
 from mcp_server.tools import register_all_tools
 
 # Initialize the MCP server using FastMCP (has .tool() decorator)
-server = FastMCP("memory-palace")
+server = FastMCP("memory-palace-v2")
 
 # Alias for backwards compatibility
 mcp = server
@@ -30,10 +29,61 @@ mcp = server
 register_all_tools(server)
 
 
+def _check_schema_version():
+    """
+    Fail-fast schema check at startup.
+
+    Detects if the database is still on v1 schema (has 'importance' column
+    or 'handoff_messages' table) and tells the user to run migration.
+    """
+    from sqlalchemy import inspect
+    engine = get_engine()
+    inspector = inspect(engine)
+
+    tables = inspector.get_table_names()
+
+    # Check 1: memories table should have 'foundational', not 'importance'
+    if "memories" in tables:
+        columns = [c["name"] for c in inspector.get_columns("memories")]
+        if "importance" in columns and "foundational" not in columns:
+            print("=" * 60, file=sys.stderr)
+            print("SCHEMA MIGRATION REQUIRED", file=sys.stderr)
+            print("=" * 60, file=sys.stderr)
+            print("", file=sys.stderr)
+            print("Your database is on v1 schema (has 'importance' column).", file=sys.stderr)
+            print("Memory Palace v2.0 requires the v3 schema.", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("Run:  memory-palace-migrate", file=sys.stderr)
+            print("  or: python -m memory_palace.migrations.v2_to_v3", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("This is safe and non-destructive. It will:", file=sys.stderr)
+            print("  - Convert importance → foundational flag", file=sys.stderr)
+            print("  - Rename handoff_messages → messages (with pubsub columns)", file=sys.stderr)
+            print("=" * 60, file=sys.stderr)
+            sys.exit(1)
+
+    # Check 2: handoff_messages should have been renamed to messages
+    if "handoff_messages" in tables and "messages" not in tables:
+        print("=" * 60, file=sys.stderr)
+        print("SCHEMA MIGRATION REQUIRED", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Your database has 'handoff_messages' table (v1 schema).", file=sys.stderr)
+        print("Memory Palace v2.0 uses the 'messages' table.", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Run:  memory-palace-migrate", file=sys.stderr)
+        print("  or: python -m memory_palace.migrations.v2_to_v3", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        sys.exit(1)
+
+
 async def main_async():
     """Run the MCP server (async)."""
     # Initialize database
     init_db()
+
+    # Check schema version before accepting connections
+    _check_schema_version()
 
     # Run server with stdio transport (FastMCP has run_stdio_async)
     await server.run_stdio_async()

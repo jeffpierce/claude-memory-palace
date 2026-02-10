@@ -5,7 +5,7 @@ Provides health checks, bulk archival, consolidation, and re-embedding
 operations for palace maintenance.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 
@@ -14,7 +14,6 @@ from sqlalchemy import func, or_
 from memory_palace.models import Memory, MemoryEdge
 from memory_palace.database import get_session
 from memory_palace.embeddings import cosine_similarity, get_embedding
-from memory_palace.services.memory_service import forget
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +100,8 @@ def _find_stale_memories(
     """
     Find stale memories (old, low access, low centrality).
 
+    Foundational memories are NEVER considered stale.
+
     Args:
         db: Database session
         stale_days: Age threshold in days
@@ -112,11 +113,12 @@ def _find_stale_memories(
     Returns:
         List of stale memories with diagnostic info
     """
-    cutoff_date = datetime.utcnow() - timedelta(days=stale_days)
+    cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=stale_days)
 
-    # Get candidate memories
+    # Get candidate memories (exclude foundational)
     query = db.query(Memory).filter(
         Memory.is_archived == False,
+        Memory.foundational == False,  # Foundational memories never stale
         Memory.created_at < cutoff_date,
         Memory.access_count <= stale_access_threshold
     )
@@ -135,7 +137,7 @@ def _find_stale_memories(
 
         # Memory is stale only if centrality is also low
         if in_degree < stale_centrality_threshold:
-            age_days = (datetime.utcnow() - memory.created_at).days
+            age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - memory.created_at).days
             stale.append({
                 "memory_id": memory.id,
                 "subject": memory.subject or "(no subject)",
@@ -252,16 +254,61 @@ def _find_contradictions(
     return contradictions
 
 
+def _find_unlinked_memories(
+    db,
+    project: Optional[str] = None,
+    limit: int = 20
+) -> List[Dict[str, Any]]:
+    """
+    Find memories with no edges (isolated nodes).
+
+    Args:
+        db: Database session
+        project: Filter by project
+        limit: Maximum to return
+
+    Returns:
+        List of unlinked memories
+    """
+    # Find memories with no outgoing or incoming edges
+    query = db.query(Memory).filter(
+        Memory.is_archived == False
+    )
+
+    if project:
+        query = query.filter(Memory.project == project)
+
+    candidates = query.all()
+    unlinked = []
+
+    for memory in candidates:
+        if len(unlinked) >= limit:
+            break
+
+        # Check if memory has any edges
+        has_edges = db.query(MemoryEdge).filter(
+            or_(
+                MemoryEdge.source_id == memory.id,
+                MemoryEdge.target_id == memory.id
+            )
+        ).first()
+
+        if not has_edges:
+            age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - memory.created_at).days
+            unlinked.append({
+                "memory_id": memory.id,
+                "subject": memory.subject or "(no subject)",
+                "type": memory.memory_type,
+                "age_days": age_days,
+                "access_count": memory.access_count
+            })
+
+    return unlinked
+
+
 def audit_palace(
-    check_duplicates: bool = True,
-    check_stale: bool = True,
-    check_orphan_edges: bool = True,
-    check_embeddings: bool = True,
-    check_contradictions: bool = True,
-    stale_days: int = 90,
-    stale_access_threshold: int = 2,
-    stale_centrality_threshold: int = 3,
-    duplicate_threshold: float = 0.92,
+    checks: Optional[List[str]] = None,
+    thresholds: Optional[Dict[str, Any]] = None,
     project: Optional[str] = None,
     limit_per_category: int = 20
 ) -> Dict[str, Any]:
@@ -269,15 +316,11 @@ def audit_palace(
     Audit palace health and return actionable findings.
 
     Args:
-        check_duplicates: Find near-duplicates (>0.9 similarity)
-        check_stale: Old + low access + low centrality
-        check_orphan_edges: Edges pointing to archived memories
-        check_embeddings: Memories missing embeddings
-        check_contradictions: Find 'contradicts' edges for review
-        stale_days: Age threshold for "stale"
-        stale_access_threshold: Access count threshold
-        stale_centrality_threshold: In-degree below this = not protected
-        duplicate_threshold: Similarity threshold for duplicates
+        checks: List of check names to run (None = all).
+                Valid: "duplicates", "stale", "orphan_edges", "missing_embeddings",
+                       "contradictions", "unlinked"
+        thresholds: Override thresholds, e.g. {"duplicate_similarity": 0.95,
+                    "stale_days": 90, "stale_max_access": 5}
         project: Filter by project
         limit_per_category: Cap results per issue type
 
@@ -286,72 +329,99 @@ def audit_palace(
     """
     db = get_session()
     try:
+        # Default to all checks if none specified
+        if checks is None:
+            checks = ["duplicates", "stale", "orphan_edges", "missing_embeddings",
+                     "contradictions", "unlinked"]
+
+        # Default thresholds
+        default_thresholds = {
+            "duplicate_similarity": 0.92,
+            "stale_days": 90,
+            "stale_max_access": 2,
+            "stale_min_centrality": 3
+        }
+
+        # Merge user-provided thresholds
+        if thresholds:
+            default_thresholds.update(thresholds)
+
         result = {}
 
         # Check duplicates
-        if check_duplicates:
+        if "duplicates" in checks:
             duplicates = _find_duplicates(
                 db,
-                threshold=duplicate_threshold,
+                threshold=default_thresholds["duplicate_similarity"],
                 project=project,
                 limit=limit_per_category
             )
             result["duplicates"] = duplicates
 
         # Check stale memories
-        if check_stale:
+        if "stale" in checks:
             stale = _find_stale_memories(
                 db,
-                stale_days=stale_days,
-                stale_access_threshold=stale_access_threshold,
-                stale_centrality_threshold=stale_centrality_threshold,
+                stale_days=default_thresholds["stale_days"],
+                stale_access_threshold=default_thresholds["stale_max_access"],
+                stale_centrality_threshold=default_thresholds["stale_min_centrality"],
                 project=project,
                 limit=limit_per_category
             )
             result["stale"] = stale
 
         # Check orphan edges
-        if check_orphan_edges:
+        if "orphan_edges" in checks:
             orphans = _find_orphan_edges(db, limit=limit_per_category)
             result["orphan_edges"] = orphans
 
         # Check missing embeddings
-        if check_embeddings:
+        if "missing_embeddings" in checks:
             missing = _find_missing_embeddings(db, project=project, limit=limit_per_category)
             result["missing_embeddings"] = missing
 
         # Check contradictions
-        if check_contradictions:
+        if "contradictions" in checks:
             contradictions = _find_contradictions(db, limit=limit_per_category)
             result["contradictions"] = contradictions
+
+        # Check unlinked memories
+        if "unlinked" in checks:
+            unlinked = _find_unlinked_memories(db, project=project, limit=limit_per_category)
+            result["unlinked"] = unlinked
 
         # Build summary
         total_issues = 0
         summary = {}
 
-        if check_duplicates:
+        if "duplicates" in checks:
             count = len(result.get("duplicates", []))
             summary["duplicates_found"] = count
             total_issues += count
 
-        if check_stale:
+        if "stale" in checks:
             count = len(result.get("stale", []))
             summary["stale_found"] = count
             total_issues += count
 
-        if check_orphan_edges:
+        if "orphan_edges" in checks:
             count = len(result.get("orphan_edges", []))
             summary["orphan_edges_found"] = count
             total_issues += count
 
-        if check_embeddings:
+        if "missing_embeddings" in checks:
             count = len(result.get("missing_embeddings", []))
             summary["missing_embeddings_found"] = count
             total_issues += count
 
-        if check_contradictions:
+        if "contradictions" in checks:
             count = len(result.get("contradictions", []))
             summary["contradictions_found"] = count
+            total_issues += count
+
+        if "unlinked" in checks:
+            count = len(result.get("unlinked", []))
+            summary["unlinked_found"] = count
             total_issues += count
 
         summary["total_issues"] = total_issues
@@ -376,6 +446,9 @@ def batch_archive_memories(
     """
     Archive multiple memories matching criteria.
 
+    DEPRECATED: Use memory_service.archive_memory() instead.
+    This is a thin wrapper for backward compatibility.
+
     Safety: dry_run=True by default. Returns preview of what would be archived.
 
     Args:
@@ -384,92 +457,28 @@ def batch_archive_memories(
         memory_type: Type filter
         project: Project filter
         memory_ids: Explicit ID list (overrides other filters)
-        centrality_protection: Protect high-centrality memories
-        min_centrality_threshold: In-degree count that grants protection
+        centrality_protection: Protect high-centrality memories (deprecated, foundational protection is automatic)
+        min_centrality_threshold: In-degree count that grants protection (deprecated)
         dry_run: Preview only (default safe)
         reason: Archival reason for audit trail
 
     Returns:
         Dict with preview or execution results
     """
-    db = get_session()
-    try:
-        # Build query
-        if memory_ids:
-            # Explicit ID list
-            candidates = db.query(Memory).filter(
-                Memory.id.in_(memory_ids),
-                Memory.is_archived == False
-            ).all()
-        else:
-            # Build filter query
-            query = db.query(Memory).filter(Memory.is_archived == False)
+    # Delegate to the new unified archive_memory function
+    from memory_palace.services.memory_service import archive_memory
 
-            if older_than_days:
-                cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
-                query = query.filter(Memory.created_at < cutoff_date)
-
-            if max_access_count is not None:
-                query = query.filter(Memory.access_count <= max_access_count)
-
-            if memory_type:
-                query = query.filter(Memory.memory_type == memory_type)
-
-            if project:
-                query = query.filter(Memory.project == project)
-
-            candidates = query.all()
-
-        # Apply centrality protection
-        to_archive = []
-        protected = []
-
-        for memory in candidates:
-            if centrality_protection:
-                in_degree = _compute_in_degree(db, memory.id)
-                if in_degree >= min_centrality_threshold:
-                    age_days = (datetime.utcnow() - memory.created_at).days
-                    protected.append({
-                        "id": memory.id,
-                        "subject": memory.subject or "(no subject)",
-                        "in_degree": in_degree,
-                        "age_days": age_days,
-                        "reason": f"protected by centrality (in-degree={in_degree})"
-                    })
-                    continue
-
-            age_days = (datetime.utcnow() - memory.created_at).days
-            to_archive.append({
-                "id": memory.id,
-                "subject": memory.subject or "(no subject)",
-                "type": memory.memory_type,
-                "age_days": age_days,
-                "access_count": memory.access_count
-            })
-
-        # Execute archival if not dry run
-        if not dry_run:
-            archived_count = 0
-            for mem_info in to_archive:
-                result = forget(mem_info["id"], reason=reason)
-                if "error" not in result:
-                    archived_count += 1
-
-            return {
-                "archived": archived_count,
-                "memories": to_archive,
-                "protected": protected
-            }
-        else:
-            # Dry run - preview only
-            return {
-                "would_archive": len(to_archive),
-                "memories": to_archive,
-                "protected": protected,
-                "note": "DRY RUN - no memories were archived. Set dry_run=False to execute."
-            }
-    finally:
-        db.close()
+    return archive_memory(
+        memory_ids=memory_ids,
+        older_than_days=older_than_days,
+        max_access_count=max_access_count,
+        project=project,
+        memory_type=memory_type,
+        centrality_protection=centrality_protection,
+        min_centrality_threshold=min_centrality_threshold,
+        dry_run=dry_run,
+        reason=reason
+    )
 
 
 def reembed_memories(
@@ -477,6 +486,7 @@ def reembed_memories(
     memory_ids: Optional[List[int]] = None,
     project: Optional[str] = None,
     all_memories: bool = False,
+    missing_only: bool = False,
     batch_size: int = 50,
     dry_run: bool = True
 ) -> Dict[str, Any]:
@@ -487,12 +497,14 @@ def reembed_memories(
     - Embedding model changes
     - Embeddings seem to be returning poor results
     - After bulk import
+    - Backfilling missing embeddings (missing_only=True)
 
     Args:
         older_than_days: Re-embed old embeddings
         memory_ids: Explicit list
         project: Filter by project
         all_memories: Nuclear option - re-embed everything
+        missing_only: Only re-embed memories with NULL/empty embeddings (replaces backfill_embeddings)
         batch_size: Batch size for processing
         dry_run: Preview only (default safe)
 
@@ -502,7 +514,15 @@ def reembed_memories(
     db = get_session()
     try:
         # Build query
-        if memory_ids:
+        if missing_only:
+            # Only memories with missing embeddings
+            query = db.query(Memory).filter(
+                Memory.is_archived == False,
+                Memory.embedding.is_(None)
+            )
+            if project:
+                query = query.filter(Memory.project == project)
+        elif memory_ids:
             query = db.query(Memory).filter(Memory.id.in_(memory_ids))
         elif all_memories:
             query = db.query(Memory).filter(Memory.is_archived == False)
@@ -510,7 +530,7 @@ def reembed_memories(
             query = db.query(Memory).filter(Memory.is_archived == False)
 
             if older_than_days:
-                cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+                cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=older_than_days)
                 query = query.filter(Memory.created_at < cutoff_date)
 
             if project:

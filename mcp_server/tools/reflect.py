@@ -1,6 +1,4 @@
-"""
-Reflect tool for Claude Memory Palace MCP server.
-"""
+"""Reflect tool for Claude Memory Palace MCP server."""
 from typing import Any, Optional
 
 from memory_palace.services import reflect
@@ -17,26 +15,22 @@ def register_reflect(mcp):
         transcript_path: str,
         session_id: Optional[str] = None,
         dry_run: bool = False,
-        toon: Optional[bool] = None
     ) -> dict[str, Any]:
         """
-        Process a conversation transcript and extract memories worth keeping.
-
-        Uses LLM (via Ollama) for intelligent extraction. Extracts facts, insights,
-        decisions, blockers, gotchas, and other valuable information from transcripts.
+        Extract memories from a conversation transcript using LLM.
 
         Args:
-            instance_id: Which instance is doing the reflection (e.g., "desktop", "code", "web")
-            transcript_path: Path to the transcript file to analyze (JSONL or TOON format)
-            session_id: Optional session ID to link memories back to source
-            dry_run: If true, only report what would be stored without writing to database
+            instance_id: Which instance is reflecting
+            transcript_path: Path to transcript file (JSONL or TOON format)
+            session_id: Optional session ID to link memories to source
+            dry_run: Report what would be stored without writing (default False)
 
         Returns:
-            Dict with extracted count, embedded count, and types breakdown
+            {extracted_count, embedded_count, types_breakdown}
         """
         return reflect(
             instance_id=instance_id,
             transcript_path=transcript_path,
             session_id=session_id,
-            dry_run=dry_run
+            dry_run=dry_run,
         )

@@ -10,10 +10,21 @@ from memory_palace.services.handoff_service import (
     mark_handoff_read,
     VALID_MESSAGE_TYPES,
 )
+from memory_palace.services.message_service import (
+    send_message,
+    get_messages,
+    mark_message_read,
+    mark_message_unread,
+    subscribe,
+    unsubscribe,
+    get_subscriptions,
+    poll_messages,
+)
 from memory_palace.services.memory_service import (
     remember,
     recall,
     forget,
+    archive_memory,
     get_memory_stats,
     backfill_embeddings,
     get_memory_by_id,
@@ -42,15 +53,25 @@ from memory_palace.services.maintenance_service import (
 )
 
 __all__ = [
-    # Handoff messaging
+    # Handoff messaging (deprecated - use message_service equivalents)
     "send_handoff",
     "get_handoffs",
     "mark_handoff_read",
     "VALID_MESSAGE_TYPES",
+    # Message pubsub (new in v2.0)
+    "send_message",
+    "get_messages",
+    "mark_message_read",
+    "mark_message_unread",
+    "subscribe",
+    "unsubscribe",
+    "get_subscriptions",
+    "poll_messages",
     # Memory operations
     "remember",
     "recall",
     "forget",
+    "archive_memory",
     "get_memory_stats",
     "backfill_embeddings",
     "get_memory_by_id",

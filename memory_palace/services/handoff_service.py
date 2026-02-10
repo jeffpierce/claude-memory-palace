@@ -1,4 +1,9 @@
 """
+DEPRECATED: Use message_service.py instead.
+
+This module is kept for backward compatibility during migration.
+All functions delegate to message_service equivalents.
+
 Handoff service for inter-instance communication.
 
 Provides note-passing between Claude instances. Valid instances are configured
@@ -8,15 +13,14 @@ in ~/.memory-palace/config.json under the "instances" key.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import or_
-
-from memory_palace.models import HandoffMessage
-from memory_palace.database import get_session
-from memory_palace.config import get_instances
-
-
 # Valid message types for handoffs
 VALID_MESSAGE_TYPES = ["handoff", "status", "question", "fyi", "context"]
+
+
+def _get_message_service():
+    """Lazy import to avoid circular dependency."""
+    from memory_palace.services import message_service
+    return message_service
 
 
 def _get_valid_instances() -> List[str]:
@@ -25,8 +29,11 @@ def _get_valid_instances() -> List[str]:
 
     Returns the list configured in ~/.memory-palace/config.json.
     The "all" broadcast target is handled separately in send/get functions.
+
+    DEPRECATED: This is now handled by message_service.
     """
-    return get_instances()
+    message_service = _get_message_service()
+    return message_service._get_valid_instances()
 
 
 def send_handoff(
@@ -38,6 +45,9 @@ def send_handoff(
 ) -> Dict[str, Any]:
     """
     Send a message from one instance to another.
+
+    DEPRECATED: Use message_service.send_message() instead.
+    This function delegates to the new message service.
 
     Enables distributed Claude consciousness - Desktop Claude can leave
     notes for Code Claude, etc. Note-passing for distributed minds.
@@ -58,37 +68,18 @@ def send_handoff(
         {"success": True, "id": X} on success
         {"error": "..."} on failure
     """
-    session = get_session()
-    try:
-        valid_instances = _get_valid_instances()
-        valid_to_instances = valid_instances + ["all"]
-
-        # Validate from_instance - can't send FROM "all"
-        if from_instance not in valid_instances:
-            return {"error": f"Invalid from_instance '{from_instance}'. Must be one of the configured instances: {valid_instances}. Configure in ~/.memory-palace/config.json"}
-
-        # Validate to_instance - can send TO "all"
-        if to_instance not in valid_to_instances:
-            return {"error": f"Invalid to_instance '{to_instance}'. Must be one of the configured instances: {valid_to_instances}. Configure in ~/.memory-palace/config.json"}
-
-        # Validate message type
-        if message_type not in VALID_MESSAGE_TYPES:
-            return {"error": f"Invalid message_type '{message_type}'. Must be one of: {VALID_MESSAGE_TYPES}"}
-
-        message = HandoffMessage(
-            from_instance=from_instance,
-            to_instance=to_instance,
-            message_type=message_type,
-            subject=subject,
-            content=content
-        )
-        session.add(message)
-        session.commit()
-        session.refresh(message)
-
-        return {"success": True, "id": message.id}
-    finally:
-        session.close()
+    # Delegate to the new message service
+    message_service = _get_message_service()
+    return message_service.send_message(
+        from_instance=from_instance,
+        to_instance=to_instance,
+        content=content,
+        message_type=message_type,
+        subject=subject,
+        channel=None,
+        priority=0,
+        expires_at=None,
+    )
 
 
 def get_handoffs(
@@ -100,6 +91,9 @@ def get_handoffs(
     """
     Get messages for an instance.
 
+    DEPRECATED: Use message_service.get_messages() instead.
+    This function delegates to the new message service.
+
     Args:
         for_instance: Which instance is checking (must be a configured instance)
         unread_only: Only return unread messages (default True)
@@ -110,38 +104,16 @@ def get_handoffs(
         {"count": N, "messages": [...]} on success
         {"error": "..."} on failure
     """
-    session = get_session()
-    try:
-        valid_instances = _get_valid_instances()
-
-        if for_instance not in valid_instances:
-            return {"error": f"Invalid for_instance '{for_instance}'. Must be one of the configured instances: {valid_instances}. Configure in ~/.memory-palace/config.json"}
-
-        # Get messages addressed to this instance OR to "all"
-        query = session.query(HandoffMessage).filter(
-            or_(
-                HandoffMessage.to_instance == for_instance,
-                HandoffMessage.to_instance == "all"
-            )
-        )
-
-        if unread_only:
-            query = query.filter(HandoffMessage.read_at.is_(None))
-
-        if message_type:
-            if message_type not in VALID_MESSAGE_TYPES:
-                return {"error": f"Invalid message_type '{message_type}'. Must be one of: {VALID_MESSAGE_TYPES}"}
-            query = query.filter(HandoffMessage.message_type == message_type)
-
-        query = query.order_by(HandoffMessage.created_at.desc()).limit(limit)
-        messages = query.all()
-
-        return {
-            "count": len(messages),
-            "messages": [m.to_dict() for m in messages]
-        }
-    finally:
-        session.close()
+    # Delegate to the new message service
+    message_service = _get_message_service()
+    return message_service.get_messages(
+        instance_id=for_instance,
+        unread_only=unread_only,
+        channel=None,
+        message_type=message_type,
+        limit=limit,
+        include_expired=False,
+    )
 
 
 def mark_handoff_read(
@@ -151,6 +123,9 @@ def mark_handoff_read(
     """
     Mark a message as read.
 
+    DEPRECATED: Use message_service.mark_message_read() instead.
+    This function delegates to the new message service.
+
     Args:
         message_id: ID of the message to mark
         read_by: Which instance read it (must be a configured instance)
@@ -158,25 +133,9 @@ def mark_handoff_read(
     Returns:
         Compact confirmation string
     """
-    session = get_session()
-    try:
-        valid_instances = _get_valid_instances()
-
-        if read_by not in valid_instances:
-            return {"error": f"Invalid read_by '{read_by}'. Must be one of the configured instances: {valid_instances}. Configure in ~/.memory-palace/config.json"}
-
-        message = session.query(HandoffMessage).filter(
-            HandoffMessage.id == message_id
-        ).first()
-
-        if not message:
-            return {"error": f"Message {message_id} not found"}
-
-        message.read_at = datetime.utcnow()
-        message.read_by = read_by
-        session.commit()
-
-        # Compact response
-        return {"message": "Marked read"}
-    finally:
-        session.close()
+    # Delegate to the new message service
+    message_service = _get_message_service()
+    return message_service.mark_message_read(
+        message_id=message_id,
+        instance_id=read_by,
+    )

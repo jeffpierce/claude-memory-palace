@@ -5,7 +5,7 @@ Provides functions for creating, traversing, and managing relationships
 between memories via the memory_edges table.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Set
 
 from sqlalchemy import or_, and_
@@ -22,7 +22,8 @@ def link_memories(
     strength: float = 1.0,
     bidirectional: bool = False,
     metadata: Optional[Dict[str, Any]] = None,
-    created_by: Optional[str] = None
+    created_by: Optional[str] = None,
+    archive_old: bool = False
 ) -> Dict[str, Any]:
     """
     Create a relationship edge between two memories.
@@ -30,12 +31,13 @@ def link_memories(
     Args:
         source_id: ID of the source memory
         target_id: ID of the target memory
-        relation_type: Type of relationship (supersedes, relates_to, derived_from, 
+        relation_type: Type of relationship (supersedes, relates_to, derived_from,
                        contradicts, exemplifies, refines, or custom)
         strength: Edge weight 0.0-1.0 for weighted traversal (default 1.0)
         bidirectional: If True, edge works in both directions (default False)
         metadata: Optional extra data to store with the edge
         created_by: Instance ID that created this edge
+        archive_old: If True AND relation_type="supersedes", automatically archive the target memory
 
     Returns:
         Dict with edge ID and confirmation, or error
@@ -45,32 +47,32 @@ def link_memories(
         # Validate memories exist
         source = db.query(Memory).filter(Memory.id == source_id).first()
         target = db.query(Memory).filter(Memory.id == target_id).first()
-        
+
         if not source:
             return {"error": f"Source memory {source_id} not found"}
         if not target:
             return {"error": f"Target memory {target_id} not found"}
-        
+
         # Check for self-loop
         if source_id == target_id:
             return {"error": "Cannot create edge from memory to itself"}
-        
+
         # Check if edge already exists
         existing = db.query(MemoryEdge).filter(
             MemoryEdge.source_id == source_id,
             MemoryEdge.target_id == target_id,
             MemoryEdge.relation_type == relation_type
         ).first()
-        
+
         if existing:
             return {
                 "error": f"Edge already exists (id={existing.id})",
                 "existing_edge_id": existing.id
             }
-        
+
         # Clamp strength to valid range
         strength = max(0.0, min(1.0, strength))
-        
+
         # Create the edge
         edge = MemoryEdge(
             source_id=source_id,
@@ -82,9 +84,21 @@ def link_memories(
             created_by=created_by
         )
         db.add(edge)
+
+        # Handle supersession archival if requested
+        archived_old = False
+        if archive_old and relation_type == "supersedes":
+            if not target.is_archived:
+                target.is_archived = True
+                if target.source_context:
+                    target.source_context += f"\n[SUPERSEDED by #{source_id}]"
+                else:
+                    target.source_context = f"[SUPERSEDED by #{source_id}]"
+                archived_old = True
+
         db.commit()
         db.refresh(edge)
-        
+
         # Build response
         direction = "<->" if bidirectional else "->"
         source_label = f"#{source_id}"
@@ -93,13 +107,18 @@ def link_memories(
         target_label = f"#{target_id}"
         if target.subject:
             target_label += f" ({target.subject})"
-        
-        return {
+
+        result = {
             "id": edge.id,
             "message": f"Created edge: {source_label} {direction}[{relation_type}]{direction} {target_label}",
             "relation_type": relation_type,
             "bidirectional": bidirectional
         }
+
+        if archived_old:
+            result["old_memory_archived"] = True
+
+        return result
     finally:
         db.close()
 
@@ -127,21 +146,21 @@ def unlink_memories(
             MemoryEdge.source_id == source_id,
             MemoryEdge.target_id == target_id
         )
-        
+
         if relation_type:
             query = query.filter(MemoryEdge.relation_type == relation_type)
-        
+
         edges = query.all()
-        
+
         if not edges:
-            return {"error": f"No edges found from {source_id} to {target_id}" + 
+            return {"error": f"No edges found from {source_id} to {target_id}" +
                     (f" with type '{relation_type}'" if relation_type else "")}
-        
+
         count = len(edges)
         for edge in edges:
             db.delete(edge)
         db.commit()
-        
+
         return {
             "removed": count,
             "message": f"Removed {count} edge(s) from #{source_id} to #{target_id}"
@@ -176,19 +195,19 @@ def get_related_memories(
         memory = db.query(Memory).filter(Memory.id == memory_id).first()
         if not memory:
             return {"error": f"Memory {memory_id} not found"}
-        
+
         result = {
             "memory_id": memory_id,
             "subject": memory.subject
         }
-        
+
         # Get outgoing edges (this memory -> others)
         if direction in ("outgoing", "both"):
             out_query = db.query(MemoryEdge).filter(MemoryEdge.source_id == memory_id)
             if relation_type:
                 out_query = out_query.filter(MemoryEdge.relation_type == relation_type)
             outgoing = out_query.all()
-            
+
             out_list = []
             for edge in outgoing:
                 edge_dict = edge.to_dict()
@@ -198,14 +217,14 @@ def get_related_memories(
                         edge_dict["target_memory"] = target.to_dict(detail_level=detail_level)
                 out_list.append(edge_dict)
             result["outgoing"] = out_list
-        
+
         # Get incoming edges (others -> this memory)
         if direction in ("incoming", "both"):
             in_query = db.query(MemoryEdge).filter(MemoryEdge.target_id == memory_id)
             if relation_type:
                 in_query = in_query.filter(MemoryEdge.relation_type == relation_type)
             incoming = in_query.all()
-            
+
             in_list = []
             for edge in incoming:
                 edge_dict = edge.to_dict()
@@ -215,8 +234,8 @@ def get_related_memories(
                         edge_dict["source_memory"] = source.to_dict(detail_level=detail_level)
                 in_list.append(edge_dict)
             result["incoming"] = in_list
-        
-        # Also include bidirectional edges that point TO this memory 
+
+        # Also include bidirectional edges that point TO this memory
         # (they logically apply in both directions)
         if direction in ("outgoing", "both"):
             bidir_query = db.query(MemoryEdge).filter(
@@ -226,7 +245,7 @@ def get_related_memories(
             if relation_type:
                 bidir_query = bidir_query.filter(MemoryEdge.relation_type == relation_type)
             bidirectional = bidir_query.all()
-            
+
             if bidirectional:
                 bidir_list = []
                 for edge in bidirectional:
@@ -238,7 +257,7 @@ def get_related_memories(
                             edge_dict["related_memory"] = source.to_dict(detail_level=detail_level)
                     bidir_list.append(edge_dict)
                 result["bidirectional_incoming"] = bidir_list
-        
+
         return result
     finally:
         db.close()
@@ -253,7 +272,10 @@ def supersede_memory(
     """
     Mark a new memory as superseding an old one.
 
-    This is a convenience wrapper that:
+    DEPRECATED: Use link_memories() with archive_old=True instead.
+    This is a convenience wrapper that will be removed in a future version.
+
+    This wrapper:
     1. Creates a 'supersedes' edge from new -> old
     2. Optionally archives the old memory
 
@@ -266,56 +288,17 @@ def supersede_memory(
     Returns:
         Dict with edge ID and archive status
     """
-    db = get_session()
-    try:
-        # Validate memories exist
-        new_memory = db.query(Memory).filter(Memory.id == new_memory_id).first()
-        old_memory = db.query(Memory).filter(Memory.id == old_memory_id).first()
-        
-        if not new_memory:
-            return {"error": f"New memory {new_memory_id} not found"}
-        if not old_memory:
-            return {"error": f"Old memory {old_memory_id} not found"}
-        
-        # Create the supersedes edge
-        edge = MemoryEdge(
-            source_id=new_memory_id,
-            target_id=old_memory_id,
-            relation_type="supersedes",
-            strength=1.0,
-            bidirectional=False,
-            edge_metadata={"superseded_at": datetime.utcnow().isoformat()},
-            created_by=created_by
-        )
-        db.add(edge)
-        
-        # Archive old memory if requested
-        archived = False
-        if archive_old and not old_memory.is_archived:
-            old_memory.is_archived = True
-            if old_memory.source_context:
-                old_memory.source_context += f"\n[SUPERSEDED by #{new_memory_id}]"
-            else:
-                old_memory.source_context = f"[SUPERSEDED by #{new_memory_id}]"
-            archived = True
-        
-        db.commit()
-        db.refresh(edge)
-        
-        new_label = f"#{new_memory_id}"
-        if new_memory.subject:
-            new_label += f" ({new_memory.subject})"
-        old_label = f"#{old_memory_id}"
-        if old_memory.subject:
-            old_label += f" ({old_memory.subject})"
-        
-        return {
-            "edge_id": edge.id,
-            "message": f"{new_label} supersedes {old_label}",
-            "old_memory_archived": archived
-        }
-    finally:
-        db.close()
+    # Delegate to link_memories with archive_old parameter
+    return link_memories(
+        source_id=new_memory_id,
+        target_id=old_memory_id,
+        relation_type="supersedes",
+        strength=1.0,
+        bidirectional=False,
+        metadata={"superseded_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat()},
+        created_by=created_by,
+        archive_old=archive_old
+    )
 
 
 def traverse_graph(
@@ -348,23 +331,23 @@ def traverse_graph(
     try:
         # Clamp max_depth
         max_depth = max(1, min(5, max_depth))
-        
+
         # Verify start memory exists
         start = db.query(Memory).filter(Memory.id == start_id).first()
         if not start:
             return {"error": f"Start memory {start_id} not found"}
-        
+
         # Track visited nodes and edges
         visited_ids: Set[int] = {start_id}
         discovered_edges: List[Dict] = []
         nodes_by_depth: Dict[int, List[Dict]] = {0: [start.to_dict(detail_level=detail_level)]}
-        
+
         # BFS traversal
         current_frontier = {start_id}
-        
+
         for depth in range(1, max_depth + 1):
             next_frontier: Set[int] = set()
-            
+
             for node_id in current_frontier:
                 # Build edge query based on direction
                 if direction == "outgoing":
@@ -378,17 +361,17 @@ def traverse_graph(
                             MemoryEdge.target_id == node_id
                         )
                     )
-                
+
                 # Filter by relation types if specified
                 if relation_types:
                     edge_query = edge_query.filter(MemoryEdge.relation_type.in_(relation_types))
-                
+
                 # Filter by strength
                 if min_strength > 0:
                     edge_query = edge_query.filter(MemoryEdge.strength >= min_strength)
-                
+
                 edges = edge_query.all()
-                
+
                 for edge in edges:
                     # Determine the "other" node
                     if edge.source_id == node_id:
@@ -398,7 +381,7 @@ def traverse_graph(
                         # Skip if edge isn't bidirectional and we're going "backwards"
                         if direction == "outgoing" and not edge.bidirectional:
                             continue
-                    
+
                     # Skip if already visited
                     if other_id in visited_ids:
                         # Still record the edge for completeness
@@ -407,39 +390,39 @@ def traverse_graph(
                         edge_dict["_note"] = "connects to already-visited node"
                         discovered_edges.append(edge_dict)
                         continue
-                    
+
                     # Get the other memory
                     other = db.query(Memory).filter(Memory.id == other_id).first()
                     if not other:
                         continue
-                    
+
                     # Skip archived unless requested
                     if other.is_archived and not include_archived:
                         continue
-                    
+
                     # Add to results
                     visited_ids.add(other_id)
                     next_frontier.add(other_id)
-                    
+
                     edge_dict = edge.to_dict()
                     edge_dict["_depth"] = depth
                     discovered_edges.append(edge_dict)
-                    
+
                     if depth not in nodes_by_depth:
                         nodes_by_depth[depth] = []
                     nodes_by_depth[depth].append(other.to_dict(detail_level=detail_level))
-            
+
             current_frontier = next_frontier
             if not current_frontier:
                 break
-        
+
         # Flatten nodes for response
         all_nodes = []
         for d in sorted(nodes_by_depth.keys()):
             for node in nodes_by_depth[d]:
                 node["_depth"] = d
                 all_nodes.append(node)
-        
+
         return {
             "start_id": start_id,
             "max_depth": max_depth,
@@ -471,13 +454,13 @@ def get_relationship_types() -> Dict[str, Any]:
             "exemplifies": "This is an example of that concept (directional)",
             "refines": "Adds detail/nuance to another memory (directional)"
         }
-        
+
         # Find any custom types in use
         all_types = db.query(MemoryEdge.relation_type).distinct().all()
         all_types = [t[0] for t in all_types]
-        
+
         custom_types = [t for t in all_types if t not in RELATIONSHIP_TYPES]
-        
+
         return {
             "standard_types": standard_types,
             "custom_types_in_use": custom_types,

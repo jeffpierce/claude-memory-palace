@@ -121,9 +121,9 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):'
         # Extract keywords from subject (simple approach)
         keywords = [w.strip() for w in subject.split() if len(w) > 3] if subject else []
 
-        # Default importance based on type - higher for actionable/architectural info
+        # Default foundational based on type - true for actionable/architectural info
         high_importance_types = ["insight", "relationship", "decision", "architecture", "blocker", "gotcha"]
-        importance = 7 if mem_type in high_importance_types else 5
+        foundational = mem_type in high_importance_types
 
         # Create the memory (skip db write in dry_run mode)
         if not dry_run:
@@ -133,7 +133,7 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):'
                 content=content,
                 subject=subject,
                 keywords=keywords if keywords else None,
-                importance=importance,
+                foundational=foundational,
                 source_type="conversation",
                 source_context="Extracted from transcript via LLM analysis",
                 source_session_id=session_id
@@ -145,7 +145,7 @@ Output M|type|subject|content lines (exactly 4 pipe-separated fields per line):'
             "content": content,
             "subject": subject,
             "keywords": keywords,
-            "importance": importance,
+            "foundational": foundational,
             "extraction_method": "llm"
         })
 
