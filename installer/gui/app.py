@@ -127,20 +127,21 @@ class InstallerApp:
         desc = ttk.Frame(self.container)
         desc.pack(fill=tk.X, padx=30, pady=10)
 
-        ttk.Label(
-            desc,
-            text=(
-                "Welcome! This installer sets up a persistent memory system\n"
-                "for your AI tools — Claude Desktop, Cursor, Windsurf, and more.\n\n"
-                "Your memories stay local. Nothing leaves your machine unless\n"
-                "you choose to share it.\n\n"
-                "The only question we'll ask: which AI tools do you already use?\n"
-                "We'll handle the rest."
-            ),
-            font=("Segoe UI", 11),
-            justify=tk.LEFT,
-            wraplength=550,
-        ).pack(anchor=tk.W)
+        for para in [
+            "Welcome! This installer sets up a persistent memory system "
+            "for your AI tools \u2014 Claude Desktop, Cursor, Windsurf, and more.",
+            "Your memories stay local. Nothing leaves your machine "
+            "unless you choose to share it.",
+            "The only question we'll ask: which AI tools do you already use? "
+            "We'll handle the rest.",
+        ]:
+            ttk.Label(
+                desc,
+                text=para,
+                font=("Segoe UI", 11),
+                justify=tk.LEFT,
+                wraplength=480,
+            ).pack(anchor=tk.W, pady=(0, 12))
 
         self._spacer()
         self._nav_frame(next_cmd=self._show_detecting, next_label="Get Started")
@@ -399,7 +400,7 @@ class InstallerApp:
                     text="💡 Noticed you're in WSL — Windows-side clients are listed above.",
                     font=("Segoe UI", 10),
                     foreground="blue",
-                    wraplength=550,
+                    wraplength=480,
                 ).pack(anchor=tk.W)
 
         # Not-detected section (collapsed, for manual selection)
