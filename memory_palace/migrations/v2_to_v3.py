@@ -154,16 +154,51 @@ def migrate_memories_table(engine: Engine) -> None:
                     )
                 """))
 
-                # Copy data
-                conn.execute(text("""
-                    INSERT INTO memories_new
-                    SELECT
-                        id, created_at, updated_at, instance_id, project,
-                        memory_type, subject, content, keywords, tags, foundational,
-                        source_type, source_context, source_session_id, embedding,
-                        last_accessed_at, access_count, expires_at, is_archived
-                    FROM memories
-                """))
+                # Build SELECT dynamically based on what columns exist in old table.
+                # v1 schemas may be missing columns that v2 added (e.g. project).
+                old_columns = {col["name"] for col in inspect(engine).get_columns("memories")}
+
+                # Target columns and their defaults for missing source columns
+                target_cols = [
+                    ("id", None),
+                    ("created_at", None),
+                    ("updated_at", None),
+                    ("instance_id", None),
+                    ("project", "'life'"),
+                    ("memory_type", None),
+                    ("subject", None),
+                    ("content", None),
+                    ("keywords", None),
+                    ("tags", None),
+                    ("foundational", "0"),
+                    ("source_type", None),
+                    ("source_context", None),
+                    ("source_session_id", None),
+                    ("embedding", None),
+                    ("last_accessed_at", None),
+                    ("access_count", "0"),
+                    ("expires_at", None),
+                    ("is_archived", "0"),
+                ]
+
+                dest_cols = []
+                select_exprs = []
+                for col_name, default_val in target_cols:
+                    dest_cols.append(col_name)
+                    if col_name in old_columns:
+                        select_exprs.append(col_name)
+                    elif default_val is not None:
+                        select_exprs.append(f"{default_val} AS {col_name}")
+                    else:
+                        select_exprs.append(f"NULL AS {col_name}")
+
+                insert_sql = (
+                    f"INSERT INTO memories_new ({', '.join(dest_cols)})\n"
+                    f"SELECT {', '.join(select_exprs)}\n"
+                    f"FROM memories"
+                )
+                print(f"  Copying {len(old_columns)} existing columns, defaulting missing ones...")
+                conn.execute(text(insert_sql))
 
                 # Drop old table
                 conn.execute(text("DROP TABLE memories"))

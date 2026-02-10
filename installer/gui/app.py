@@ -23,13 +23,16 @@ from shared.detect import detect_all, SystemInfo
 from shared.clients import discover_clients, configure_clients, ClientInfo
 from shared.models import get_model_recommendation, pull_model, check_model_installed, ModelRecommendation
 from shared.migrate import detect_existing_palace, detect_and_migrate, detection_display, PalaceInfo
+from shared.detect import detect_postgres
 from shared.install_core import (
     get_default_install_dir,
     find_python,
     create_venv,
     install_package,
     install_ollama,
-    clone_or_update_repo,
+    install_postgres,
+    install_pgvector,
+    setup_postgres_database,
     verify_installation,
     get_venv_python,
 )
@@ -66,6 +69,11 @@ class InstallerApp:
         self.install_llm_var = tk.BooleanVar(value=False)
         self.db_type_var = tk.StringVar(value="sqlite")
         self.pg_url_var = tk.StringVar(value="postgresql://localhost:5432/memory_palace")
+
+        # Install logging
+        self.log_file_path = Path.home() / ".memory-palace" / "install.log"
+        self.log_file = None
+        self.install_errors: list[str] = []  # Collect errors for the complete screen
 
         # Container
         self.container = ttk.Frame(self.root, padding="20")
@@ -165,6 +173,7 @@ class InstallerApp:
             ("platform", "Platform"),
             ("python", "Python"),
             ("ollama", "Ollama"),
+            ("postgres", "PostgreSQL"),
             ("gpu", "GPU"),
             ("clients", "AI Clients"),
             ("palace", "Existing Palace"),
@@ -228,6 +237,20 @@ class InstallerApp:
             detail = "Not installed"
         self.root.after(
             0, lambda: self._update_detect("ollama", si.ollama.installed, detail)
+        )
+
+        # PostgreSQL
+        if si.postgres.installed:
+            pg_detail = f"PostgreSQL {si.postgres.version}" if si.postgres.version else "Installed"
+            if si.postgres.has_pgvector:
+                pg_detail += " + pgvector"
+            elif si.postgres.running:
+                pg_detail += " (no pgvector)"
+        else:
+            pg_detail = "Not installed"
+        self.root.after(
+            0,
+            lambda: self._update_detect("postgres", si.postgres.installed, pg_detail),
         )
 
         # GPU
@@ -444,11 +467,30 @@ class InstallerApp:
     # ========================================================================
 
     def _on_db_type_changed(self):
-        """Show/hide PostgreSQL URL entry based on database type selection."""
+        """Show/hide PostgreSQL URL entry and status based on database type selection."""
         if self.db_type_var.get() == "postgres":
             self.pg_url_frame.pack(fill=tk.X, pady=(5, 0), padx=(25, 0))
+            self.pg_status_frame.pack(fill=tk.X, pady=(3, 0), padx=(25, 0))
+            # Update status label based on detection
+            si = self.system_info
+            if si and si.postgres.installed and si.postgres.has_pgvector:
+                self.pg_status_label.config(
+                    text="✓ PostgreSQL + pgvector detected — ready",
+                    foreground="green",
+                )
+            elif si and si.postgres.installed:
+                self.pg_status_label.config(
+                    text="⚠ PostgreSQL found but pgvector missing — will be installed",
+                    foreground="orange",
+                )
+            else:
+                self.pg_status_label.config(
+                    text="⚠ PostgreSQL not found — will be installed automatically",
+                    foreground="orange",
+                )
         else:
             self.pg_url_frame.pack_forget()
+            self.pg_status_frame.pack_forget()
 
     def _show_options(self):
         self._clear()
@@ -557,9 +599,21 @@ class InstallerApp:
         )
         self.pg_url_entry.pack(side=tk.LEFT, padx=(8, 0))
 
-        # Initially hide PostgreSQL URL entry
+        # PostgreSQL install status (shown when postgres is selected)
+        self.pg_status_frame = ttk.Frame(db_frame)
+        self.pg_status_label = ttk.Label(
+            self.pg_status_frame,
+            text="",
+            font=("Segoe UI", 9),
+        )
+        self.pg_status_label.pack(anchor=tk.W)
+
+        # Initially hide PostgreSQL-specific widgets
         if self.db_type_var.get() != "postgres":
             self.pg_url_frame.pack_forget()
+            self.pg_status_frame.pack_forget()
+        else:
+            self._on_db_type_changed()
 
         # Install directory
         dir_frame = ttk.LabelFrame(self.container, text="Install Location", padding="10")
@@ -642,6 +696,14 @@ class InstallerApp:
         self._spacer()
         # No nav during install
 
+        # Open log file for writing
+        self.install_errors.clear()
+        try:
+            self.log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            self.log_file = open(self.log_file_path, "w", encoding="utf-8")
+        except Exception:
+            self.log_file = None  # Can't write log — continue without it
+
         threading.Thread(target=self._run_install, daemon=True).start()
 
     def _log(self, msg: str):
@@ -653,11 +715,40 @@ class InstallerApp:
 
         self.root.after(0, update)
 
+        # Also write to log file on disk
+        if self.log_file:
+            try:
+                self.log_file.write(msg + "\n")
+                self.log_file.flush()
+            except Exception:
+                pass
+
+    def _log_error(self, step: str, msg: str, detail: str = ""):
+        """Log an error and track it for the complete screen."""
+        self._log(f"  ✗ {msg}")
+        if detail:
+            self._log(f"    {detail}")
+        error_entry = f"{step}: {msg}"
+        if detail:
+            error_entry += f" — {detail}"
+        self.install_errors.append(error_entry)
+
     def _set_progress(self, val: int):
         self.root.after(0, lambda: self.progress_bar.configure(value=val))
 
     def _run_install(self):
-        steps = 8  # download, venv, package, migration, database config, embedding, base LLM, configure
+        steps = 8  # verify files, venv, package, migration, database config, embedding, base LLM, configure
+        db_type = self.db_type_var.get()
+        needs_pg_install = (db_type == "postgres" and self.system_info
+                            and not self.system_info.postgres.installed)
+        needs_pgvector_install = (db_type == "postgres" and self.system_info
+                                  and not self.system_info.postgres.has_pgvector)
+        if needs_pg_install:
+            steps += 1  # install postgres
+        if needs_pgvector_install:
+            steps += 1  # install pgvector
+        if db_type == "postgres":
+            steps += 1  # setup database
         if (self.install_llm_var.get() and self.model_rec.llm_model
                 and self.model_rec.llm_model != "qwen3:1.7b"):
             steps += 1  # upgraded LLM
@@ -667,16 +758,19 @@ class InstallerApp:
         pg_connection_ok = False
 
         try:
-            # 1. Download / clone repo
-            self._log("📥 Downloading Memory Palace...")
-            result = clone_or_update_repo(
-                self.install_dir,
-                progress=lambda m: self._log(f"  {m}"),
-            )
-            if not result.success:
-                self._log(f"  ✗ {result.message}")
-                if result.detail:
-                    self._log(f"    {result.detail}")
+            # 1. Verify bundled files are extracted
+            # The exe already extracted everything to install_dir via bundled_entry.py.
+            # No git clone needed — the code ships inside the exe.
+            self._log("📂 Checking installation files...")
+            pyproject = self.install_dir / "pyproject.toml"
+            if pyproject.exists():
+                self._log("  ✓ Package files present")
+            else:
+                self._log_error(
+                    "File check",
+                    "Package files not found at install location",
+                    f"Expected pyproject.toml in {self.install_dir}",
+                )
                 success = False
                 self._finish_install(False)
                 return
@@ -690,21 +784,23 @@ class InstallerApp:
                 progress=lambda m: self._log(f"  {m}"),
             )
             if not result.success:
-                self._log(f"  ✗ {result.message}")
+                self._log_error("Python environment", result.message, result.detail or "")
                 success = False
                 self._finish_install(False)
                 return
             progress += step_size
             self._set_progress(progress)
 
-            # 3. Install package
+            # 3. Install package (with postgres extras if needed)
+            extras = ["postgres"] if db_type == "postgres" else None
             self._log("📦 Installing Memory Palace package...")
             result = install_package(
                 self.install_dir,
+                extras=extras,
                 progress=lambda m: self._log(f"  {m}"),
             )
             if not result.success:
-                self._log(f"  ✗ {result.message}")
+                self._log_error("Package install", result.message, result.detail or "")
                 success = False
                 self._finish_install(False)
                 return
@@ -731,50 +827,73 @@ class InstallerApp:
             progress += step_size
             self._set_progress(progress)
 
-            # 5. Configure database
+            # 5a. Install PostgreSQL if needed
+            if needs_pg_install:
+                self._log("🐘 Installing PostgreSQL...")
+                result = install_postgres(
+                    self.system_info.platform,
+                    progress=lambda m: self._log(f"  {m}"),
+                )
+                if result.success:
+                    self._log("  ✓ PostgreSQL installed")
+                    # Re-detect postgres so we have updated paths
+                    self.system_info.postgres = detect_postgres()
+                else:
+                    self._log_error("PostgreSQL install", result.message, result.detail or "")
+                    self._log("  You can install PostgreSQL manually and configure later")
+                progress += step_size
+                self._set_progress(progress)
+
+            # 5b. Install pgvector if needed
+            if needs_pgvector_install:
+                # Re-check — maybe PG just got installed and pgvector came with it
+                if not self.system_info.postgres.has_pgvector:
+                    self._log("🧩 Installing pgvector extension...")
+                    result = install_pgvector(
+                        self.system_info.platform,
+                        self.system_info.postgres,
+                        progress=lambda m: self._log(f"  {m}"),
+                    )
+                    if result.success:
+                        self._log("  ✓ pgvector installed")
+                        self.system_info.postgres.has_pgvector = True
+                    else:
+                        self._log_error("pgvector install", result.message, result.detail or "")
+                        self._log("  You can install pgvector manually later")
+                else:
+                    self._log("🧩 pgvector already available")
+                progress += step_size
+                self._set_progress(progress)
+
+            # 5c. Set up PostgreSQL database
+            if db_type == "postgres":
+                self._log("🗄️  Setting up PostgreSQL database...")
+                result = setup_postgres_database(
+                    self.pg_url_var.get(),
+                    progress=lambda m: self._log(f"  {m}"),
+                )
+                if result.success:
+                    self._log(f"  ✓ {result.message}")
+                    pg_connection_ok = True
+                else:
+                    self._log(f"  ⚠ {result.message}")
+                    if result.detail:
+                        self._log(f"    {result.detail}")
+                    self._log("  You can configure this later in ~/.memory-palace/config.json")
+                progress += step_size
+                self._set_progress(progress)
+
+            # 5d. Configure database
             if not is_upgrade:
                 # Fresh install: configure database and write config
-                db_type = self.db_type_var.get()
                 if db_type == "sqlite":
                     self._log("💾 Database: SQLite (default)")
                     self._log("  ✓ Will be created automatically on first use")
-                else:
-                    # PostgreSQL
-                    self._log("💾 Configuring PostgreSQL connection...")
-                    pg_url = self.pg_url_var.get()
-                    self._log(f"  Testing connection to {pg_url}...")
-
-                    # Test the connection
-                    venv_python = get_venv_python(self.install_dir)
-                    test_code = f'''from sqlalchemy import create_engine
-try:
-    e = create_engine("{pg_url}")
-    c = e.connect()
-    c.close()
-    print("OK")
-except Exception as ex:
-    print(f"ERROR: {{ex}}")
-'''
-                    try:
-                        result_pg = subprocess.run(
-                            [str(venv_python), "-c", test_code],
-                            capture_output=True,
-                            text=True,
-                            timeout=10
-                        )
-                        if result_pg.returncode == 0 and "OK" in result_pg.stdout:
-                            self._log("  ✓ PostgreSQL connection successful")
-                            pg_connection_ok = True
-                        else:
-                            error_msg = result_pg.stdout + result_pg.stderr
-                            self._log(f"  ⚠ PostgreSQL connection failed: {error_msg.strip()}")
-                            self._log("  You can configure this later in ~/.memory-palace/config.json")
-                    except subprocess.TimeoutExpired:
-                        self._log("  ⚠ PostgreSQL connection test timed out")
-                        self._log("  You can configure this later in ~/.memory-palace/config.json")
-                    except Exception as e:
-                        self._log(f"  ⚠ PostgreSQL connection test error: {str(e)}")
-                        self._log("  You can configure this later in ~/.memory-palace/config.json")
+                elif db_type == "postgres":
+                    if pg_connection_ok:
+                        self._log("💾 Database: PostgreSQL (connected)")
+                    else:
+                        self._log("💾 Database: PostgreSQL (connection pending)")
 
                 # Write config.json
                 self._log("⚙️  Writing configuration file...")
@@ -894,7 +1013,16 @@ except Exception as ex:
 
         except Exception as e:
             self._log(f"❌ Unexpected error: {str(e)}")
+            self.install_errors.append(f"Unexpected error: {str(e)}")
             success = False
+
+        # Close the log file
+        if self.log_file:
+            try:
+                self.log_file.close()
+            except Exception:
+                pass
+            self.log_file = None
 
         # Store database configuration state for completion screen
         is_upgrade = self.palace_info and self.palace_info.exists
@@ -915,6 +1043,13 @@ except Exception as ex:
 
     def _finish_install(self, success: bool):
         self._set_progress(100)
+        # Close the log file
+        if self.log_file:
+            try:
+                self.log_file.close()
+            except Exception:
+                pass
+            self.log_file = None
         self.root.after(1000, lambda: self._show_complete(success))
 
     # ========================================================================
@@ -1056,17 +1191,74 @@ except Exception as ex:
         else:
             self._title("Installation Had Issues")
 
+            # Show specific errors
+            if self.install_errors:
+                err_frame = ttk.LabelFrame(
+                    self.container, text="What went wrong", padding="10"
+                )
+                err_frame.pack(fill=tk.X, padx=30, pady=(5, 10))
+
+                for err in self.install_errors:
+                    ttk.Label(
+                        err_frame,
+                        text=f"✗  {err}",
+                        font=("Segoe UI", 10),
+                        foreground="red",
+                        wraplength=550,
+                        justify=tk.LEFT,
+                    ).pack(anchor=tk.W, pady=2)
+            else:
+                ttk.Label(
+                    self.container,
+                    text="An unexpected error occurred during installation.",
+                    font=("Segoe UI", 11),
+                    foreground="orange",
+                ).pack(pady=10)
+
+            # Show log file path
+            if self.log_file_path.exists():
+                log_frame = ttk.Frame(self.container)
+                log_frame.pack(fill=tk.X, padx=30, pady=(5, 10))
+
+                ttk.Label(
+                    log_frame,
+                    text=f"Full log saved to:",
+                    font=("Segoe UI", 10),
+                ).pack(anchor=tk.W)
+
+                log_path_label = ttk.Label(
+                    log_frame,
+                    text=str(self.log_file_path),
+                    font=("Consolas", 10),
+                    foreground="blue",
+                    cursor="hand2",
+                )
+                log_path_label.pack(anchor=tk.W, pady=(2, 0))
+
+                # Click to open the log file
+                def _open_log(e=None):
+                    import webbrowser
+                    webbrowser.open(str(self.log_file_path))
+
+                log_path_label.bind("<Button-1>", _open_log)
+
             ttk.Label(
                 self.container,
-                text=(
-                    "Some steps may not have completed successfully.\n"
-                    "Check the log above for details.\n\n"
-                    "You can re-run this installer to retry."
-                ),
-                font=("Segoe UI", 11),
-                justify=tk.CENTER,
-                foreground="orange",
-            ).pack(pady=20)
+                text="You can re-run this installer to retry.",
+                font=("Segoe UI", 10),
+                foreground="gray",
+            ).pack(pady=(5, 0))
+
+        # Show log path on success too (less prominent)
+        if success and self.log_file_path.exists():
+            log_note = ttk.Frame(self.container)
+            log_note.pack(fill=tk.X, padx=30, pady=(5, 0))
+            ttk.Label(
+                log_note,
+                text=f"Install log: {self.log_file_path}",
+                font=("Segoe UI", 9),
+                foreground="gray",
+            ).pack(anchor=tk.W)
 
         self._spacer()
 

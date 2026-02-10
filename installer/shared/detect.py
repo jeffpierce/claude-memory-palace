@@ -57,12 +57,23 @@ class OllamaInfo:
 
 
 @dataclass
+class PostgresInfo:
+    """Detected PostgreSQL information."""
+    installed: bool = False
+    running: bool = False
+    version: str = ""
+    install_dir: Optional[Path] = None  # e.g. C:\Program Files\PostgreSQL\16
+    has_pgvector: bool = False
+
+
+@dataclass
 class SystemInfo:
     """Complete system detection results."""
     platform: PlatformInfo = field(default_factory=PlatformInfo)
     python: PythonInfo = field(default_factory=PythonInfo)
     ollama: OllamaInfo = field(default_factory=OllamaInfo)
     gpu: GPUInfo = field(default_factory=GPUInfo)
+    postgres: PostgresInfo = field(default_factory=PostgresInfo)
 
 
 def _run_cmd(cmd: list, timeout: int = 10) -> Tuple[bool, str, str]:
@@ -210,6 +221,72 @@ def detect_ollama() -> OllamaInfo:
     return info
 
 
+def _find_pg_bin(name: str) -> Optional[str]:
+    """
+    Find a PostgreSQL binary by name.
+
+    Checks PATH first, then common Windows install locations.
+    Returns the full path or just the name if found on PATH.
+    """
+    import shutil
+    if shutil.which(name):
+        return name
+
+    # Windows: check common PostgreSQL install dirs
+    if sys.platform == "win32":
+        pg_base = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "PostgreSQL"
+        if pg_base.exists():
+            # Check versions in descending order (newest first)
+            versions = sorted(pg_base.iterdir(), reverse=True)
+            for ver_dir in versions:
+                candidate = ver_dir / "bin" / f"{name}.exe"
+                if candidate.exists():
+                    return str(candidate)
+
+    return None
+
+
+def detect_postgres() -> PostgresInfo:
+    """Detect PostgreSQL installation, status, and pgvector availability."""
+    info = PostgresInfo()
+
+    # Find pg_config to detect installation
+    pg_config = _find_pg_bin("pg_config")
+    if not pg_config:
+        return info
+
+    success, stdout, stderr = _run_cmd([pg_config, "--version"])
+    if not success:
+        return info
+
+    info.installed = True
+    # Parse "PostgreSQL 16.2" from pg_config output
+    match = re.search(r"(\d+\.\d+\.?\d*)", stdout)
+    if match:
+        info.version = match.group(1)
+
+    # Find install directory via pg_config --bindir (parent of bin/)
+    success, stdout, _ = _run_cmd([pg_config, "--bindir"])
+    if success and stdout:
+        bin_dir = Path(stdout.strip())
+        info.install_dir = bin_dir.parent
+
+    # Check if running via pg_isready
+    pg_isready = _find_pg_bin("pg_isready")
+    if pg_isready:
+        success, _, _ = _run_cmd([pg_isready])
+        info.running = success
+
+    # Check for pgvector: look for vector.control in extension dir
+    success, stdout, _ = _run_cmd([pg_config, "--sharedir"])
+    if success and stdout:
+        ext_dir = Path(stdout.strip()) / "extension"
+        if (ext_dir / "vector.control").exists():
+            info.has_pgvector = True
+
+    return info
+
+
 def detect_gpu() -> GPUInfo:
     """Detect GPU capabilities (NVIDIA, AMD, Apple Silicon)."""
     info = GPUInfo()
@@ -295,4 +372,5 @@ def detect_all() -> SystemInfo:
         python=detect_python(),
         ollama=detect_ollama(),
         gpu=detect_gpu(),
+        postgres=detect_postgres(),
     )

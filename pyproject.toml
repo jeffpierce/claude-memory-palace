@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-palace"
-version = "2.0.0"
+version = "2.0.1"
 description = "Persistent semantic memory for AI agents — any model, any provider, your hardware, your data"
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,16 +29,20 @@ dependencies = [
     "sqlalchemy>=2.0",
     "requests>=2.28",
     "mcp>=1.0",
-    "psycopg2-binary>=2.9",  # PostgreSQL adapter
-    "pgvector>=0.3",  # pgvector support for SQLAlchemy
     "toons>=0.1",  # TOON encoding for token-efficient MCP responses
 ]
 
 [project.optional-dependencies]
+postgres = [
+    "psycopg2-binary>=2.9",  # PostgreSQL adapter
+    "pgvector>=0.3",  # pgvector support for SQLAlchemy
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "pyinstaller>=6.0",
+    "psycopg2-binary>=2.9",
+    "pgvector>=0.3",
 ]
 
 [project.urls]
