@@ -49,8 +49,8 @@ class InstallerApp:
     def __init__(self, title: str = "Memory Palace Setup"):
         self.root = tk.Tk()
         self.root.title(title)
-        self.root.geometry("650x550")
-        self.root.resizable(False, False)
+        self.root.geometry("650x720")
+        self.root.resizable(False, True)
         self._center_window()
 
         # State
@@ -459,54 +459,47 @@ class InstallerApp:
 
         # Embedding model (always)
         row = ttk.Frame(opts_frame)
-        row.pack(fill=tk.X, pady=3)
+        row.pack(fill=tk.X, pady=(3, 0))
         ttk.Label(row, text="✓", foreground="green", font=("Segoe UI", 11)).pack(side=tk.LEFT)
         ttk.Label(row, text="Embedding model", font=("Segoe UI", 11)).pack(
             side=tk.LEFT, padx=(8, 0)
         )
         ttk.Label(
-            row,
+            opts_frame,
             text=f"{self.model_rec.embedding_desc} ({self.model_rec.embedding_size})",
             font=("Segoe UI", 9),
             foreground="gray",
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        ).pack(anchor=tk.W, padx=(25, 0), pady=(0, 6))
 
         # Base LLM — always installed (qwen3:1.7b handles synthesis + classification)
         row = ttk.Frame(opts_frame)
-        row.pack(fill=tk.X, pady=3)
+        row.pack(fill=tk.X, pady=(3, 0))
         ttk.Label(row, text="✓", foreground="green", font=("Segoe UI", 11)).pack(side=tk.LEFT)
         ttk.Label(row, text="Base LLM (qwen3:1.7b)", font=("Segoe UI", 11)).pack(
             side=tk.LEFT, padx=(8, 0)
         )
         ttk.Label(
-            row,
+            opts_frame,
             text="Synthesis, classification, extraction (~1GB)",
             font=("Segoe UI", 9),
             foreground="gray",
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        ).pack(anchor=tk.W, padx=(25, 0), pady=(0, 6))
 
         # Upgraded LLM model (optional — only shown if hardware supports something bigger)
         if self.model_rec.llm_model and self.model_rec.llm_model != "qwen3:1.7b":
             row = ttk.Frame(opts_frame)
-            row.pack(fill=tk.X, pady=3)
+            row.pack(fill=tk.X, pady=(3, 0))
             self.install_llm_var.set(False)
             ttk.Checkbutton(
                 row, text="Upgraded LLM (optional)", variable=self.install_llm_var
             ).pack(side=tk.LEFT)
             ttk.Label(
-                row,
-                text=f"{self.model_rec.llm_desc} ({self.model_rec.llm_size})",
+                opts_frame,
+                text=f"{self.model_rec.llm_desc} ({self.model_rec.llm_size}). "
+                "Can be added later.",
                 font=("Segoe UI", 9),
                 foreground="gray",
-            ).pack(side=tk.LEFT, padx=(8, 0))
-
-            ttk.Label(
-                opts_frame,
-                text="Higher quality extraction and synthesis. Can be added later.",
-                font=("Segoe UI", 9, "italic"),
-                foreground="gray",
-                wraplength=520,
-            ).pack(anchor=tk.W, padx=(25, 0), pady=(0, 5))
+            ).pack(anchor=tk.W, padx=(25, 0), pady=(0, 6))
 
         # Database selection
         db_frame = ttk.LabelFrame(self.container, text="Database", padding="15")
@@ -514,7 +507,7 @@ class InstallerApp:
 
         # SQLite option (default)
         sqlite_row = ttk.Frame(db_frame)
-        sqlite_row.pack(fill=tk.X, pady=3)
+        sqlite_row.pack(fill=tk.X, pady=(3, 0))
         ttk.Radiobutton(
             sqlite_row,
             text="SQLite (default)",
@@ -523,15 +516,15 @@ class InstallerApp:
             command=self._on_db_type_changed
         ).pack(side=tk.LEFT)
         ttk.Label(
-            sqlite_row,
+            db_frame,
             text="Zero setup. Single file. Works great for personal use.",
             font=("Segoe UI", 9),
             foreground="gray",
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        ).pack(anchor=tk.W, padx=(25, 0), pady=(0, 6))
 
         # PostgreSQL option
         pg_row = ttk.Frame(db_frame)
-        pg_row.pack(fill=tk.X, pady=3)
+        pg_row.pack(fill=tk.X, pady=(3, 0))
         ttk.Radiobutton(
             pg_row,
             text="PostgreSQL",
@@ -540,12 +533,11 @@ class InstallerApp:
             command=self._on_db_type_changed
         ).pack(side=tk.LEFT)
         ttk.Label(
-            pg_row,
-            text="Native vector search, concurrent access. Requires PostgreSQL + pgvector installed separately.",
+            db_frame,
+            text="Native vector search, concurrent access. Requires PostgreSQL + pgvector.",
             font=("Segoe UI", 9),
             foreground="gray",
-            wraplength=450,
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        ).pack(anchor=tk.W, padx=(25, 0), pady=(0, 3))
 
         # PostgreSQL URL entry (only visible when postgres is selected)
         self.pg_url_frame = ttk.Frame(db_frame)
