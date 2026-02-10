@@ -1,5 +1,5 @@
 """
-Memory service for Claude Memory Palace.
+Memory service for Memory Palace.
 
 Provides functions for storing, recalling, archiving, and managing memories.
 """
@@ -11,7 +11,7 @@ import math
 
 from sqlalchemy import func, or_, String
 
-from memory_palace.models import Memory, MemoryEdge
+from memory_palace.models import Memory, MemoryEdge, _normalize_projects, _project_contains, _projects_overlap
 from memory_palace.database import get_session
 from memory_palace.embeddings import get_embedding, cosine_similarity
 from memory_palace.config_v2 import get_auto_link_config, get_instances, is_postgres
@@ -205,7 +205,7 @@ def _find_similar_memories(
     db,
     embedding: List[float],
     exclude_id: int,
-    project: Optional[str] = None,
+    projects: Optional[List[str]] = None,
     threshold: float = 0.675,
 ) -> List[Tuple[int, float]]:
     """
@@ -215,7 +215,7 @@ def _find_similar_memories(
         db: Database session
         embedding: The embedding vector to compare against
         exclude_id: Memory ID to exclude (the new memory itself)
-        project: If set, only match memories in this project
+        projects: If set, only match memories in these projects
         threshold: Minimum cosine similarity to include
 
     Returns:
@@ -229,8 +229,8 @@ def _find_similar_memories(
         Memory.embedding.isnot(None)
     )
 
-    if project:
-        query = query.filter(Memory.project == project)
+    if projects:
+        query = query.filter(_projects_overlap(projects))
 
     # Fetch candidates and score them
     candidates = query.all()
@@ -254,7 +254,7 @@ def remember(
     keywords: Optional[List[str]] = None,
     tags: Optional[List[str]] = None,
     foundational: bool = False,
-    project: str = "life",
+    project: Union[str, List[str]] = "life",
     source_type: str = "explicit",
     source_context: Optional[str] = None,
     source_session_id: Optional[str] = None,
@@ -274,7 +274,7 @@ def remember(
         keywords: List of keywords for searchability
         tags: Freeform organizational tags (separate from keywords)
         foundational: True if this is a foundational/core memory (default False)
-        project: Project this memory belongs to (default "life" for non-project memories)
+        project: Project this memory belongs to (default "life" for non-project memories). Can be a string or list of strings.
         source_type: How this memory was created (conversation, explicit, inferred, observation)
         source_context: Snippet of original context
         source_session_id: Link back to conversation session
@@ -300,9 +300,12 @@ def remember(
         if source_type not in VALID_SOURCE_TYPES:
             return {"error": f"Invalid source_type. Must be one of: {VALID_SOURCE_TYPES}"}
 
+        # Normalize project parameter to list
+        projects = _normalize_projects(project)
+
         memory = Memory(
             instance_id=instance_id,
-            project=project,
+            projects=projects,
             memory_type=memory_type,
             content=content,
             subject=subject,
@@ -382,12 +385,12 @@ def remember(
 
             # Find all similar memories down to the suggest threshold
             # Scoped to same project per auto_link config
-            similar_project = project if auto_link_config["same_project_only"] else None
+            similar_projects = projects if auto_link_config["same_project_only"] else None
             similar = _find_similar_memories(
                 db,
                 embedding,
                 memory.id,
-                project=similar_project,
+                projects=similar_projects,
                 threshold=suggest_threshold,
             )
 
@@ -686,9 +689,9 @@ def recall(
         # Filter by project if specified (supports list or string)
         if project is not None:
             if isinstance(project, list):
-                base_query = base_query.filter(Memory.project.in_(project))
+                base_query = base_query.filter(_projects_overlap(project))
             else:
-                base_query = base_query.filter(Memory.project == project)
+                base_query = base_query.filter(_project_contains(project))
 
         # Filter by memory_type (supports wildcards like "code_*")
         if memory_type:
@@ -979,7 +982,10 @@ def archive_memory(
                 query = query.filter(Memory.access_count <= max_access_count)
 
             if project:
-                query = query.filter(Memory.project == project)
+                if isinstance(project, list):
+                    query = query.filter(_projects_overlap(project))
+                else:
+                    query = query.filter(_project_contains(project))
 
             if memory_type:
                 query = query.filter(Memory.memory_type == memory_type)
@@ -1151,14 +1157,12 @@ def get_memory_stats() -> Dict[str, Any]:
         for instance, count in instance_counts:
             by_instance[instance] = count
 
-        # By project
+        # By project (explode arrays Python-side)
         by_project = {}
-        project_counts = db.query(
-            Memory.project,
-            func.count(Memory.id)
-        ).filter(Memory.is_archived == False).group_by(Memory.project).all()
-        for project, count in project_counts:
-            by_project[project or "life"] = count
+        active_memories = db.query(Memory).filter(Memory.is_archived == False).all()
+        for memory in active_memories:
+            for proj in (memory.projects or ["life"]):
+                by_project[proj] = by_project.get(proj, 0) + 1
 
         # Most accessed (top 5)
         most_accessed = db.query(Memory).filter(
@@ -1406,6 +1410,83 @@ def get_memories_by_ids(
         if graph_context:
             result["graph_context"] = graph_context
         return result
+    finally:
+        db.close()
+
+
+def get_recent_memories(
+    limit: int = 20,
+    verbose: bool = False,
+    project: Optional[Union[str, List[str]]] = None,
+    memory_type: Optional[str] = None,
+    instance_id: Optional[str] = None,
+    include_archived: bool = False,
+) -> Dict[str, Any]:
+    """
+    Get the most recent memories, ordered by creation time descending.
+
+    Default (verbose=False) returns title-card format: id, subject, memory_type,
+    project, created_at. Verbose mode returns full to_dict() output.
+
+    Args:
+        limit: Number of memories to return (default 20, max 200)
+        verbose: If False (default), return title-only compact list.
+                 If True, return full memory details via to_dict(verbose).
+        project: Filter by project — string for single, list for union (optional)
+        memory_type: Filter by memory type, supports wildcards like "code_*" (optional)
+        instance_id: Filter by instance (optional)
+        include_archived: Include archived memories (default False)
+
+    Returns:
+        {"memories": list[dict], "count": int, "total_available": int}
+    """
+    limit = min(limit, 200)  # Cap at 200
+    db = get_session()
+    try:
+        query = db.query(Memory)
+
+        if not include_archived:
+            query = query.filter(Memory.is_archived == False)
+
+        if project is not None:
+            if isinstance(project, list):
+                query = query.filter(_projects_overlap(project))
+            else:
+                query = query.filter(_project_contains(project))
+
+        if memory_type is not None:
+            if "*" in memory_type:
+                pattern = memory_type.replace("*", "%")
+                query = query.filter(Memory.memory_type.like(pattern))
+            else:
+                query = query.filter(Memory.memory_type == memory_type)
+
+        if instance_id is not None:
+            query = query.filter(Memory.instance_id == instance_id)
+
+        total_available = query.count()
+        memories = query.order_by(Memory.created_at.desc()).limit(limit).all()
+
+        if verbose:
+            memory_list = [m.to_dict(detail_level="verbose") for m in memories]
+        else:
+            memory_list = [
+                {
+                    "id": m.id,
+                    "subject": m.subject,
+                    "memory_type": m.memory_type,
+                    "project": m.projects,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                    "foundational": m.foundational,
+                }
+                for m in memories
+            ]
+
+        return {
+            "memories": memory_list,
+            "count": len(memory_list),
+            "total_available": total_available,
+        }
     finally:
         db.close()
 

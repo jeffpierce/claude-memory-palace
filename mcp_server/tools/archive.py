@@ -1,4 +1,4 @@
-"""Archive tool for Claude Memory Palace MCP server."""
+"""Archive tool for Memory Palace MCP server."""
 from typing import Any, List, Optional
 
 from memory_palace.services.memory_service import archive_memory

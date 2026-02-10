@@ -486,17 +486,43 @@ class TestFullMigration:
         assert _column_exists(v2_db, "messages", "channel")
 
     def test_returns_true_on_success(self, v2_db):
-        """Test that individual migrations don't raise errors (success)."""
-        # This is implicitly tested by other tests not raising exceptions
-        # The migrate() function returns True on success
-        try:
-            migrate_memories_table(v2_db)
-            migrate_messages_table(v2_db)
-            success = True
-        except Exception:
-            success = False
+        """Test that migrations succeed and verify final state."""
+        # Insert test data in both tables
+        with v2_db.connect() as conn:
+            conn.execute(text(
+                "INSERT INTO memories (instance_id, project, memory_type, content, importance, created_at) "
+                "VALUES ('test', 'life', 'fact', 'Test memory', 8, '2024-01-01')"
+            ))
+            conn.execute(text(
+                "INSERT INTO handoff_messages (from_instance, to_instance, message_type, content, created_at) "
+                "VALUES ('test', 'code', 'handoff', 'Test message', '2024-01-01')"
+            ))
+            conn.commit()
 
-        assert success
+        # Run both migrations
+        migrate_memories_table(v2_db)
+        migrate_messages_table(v2_db)
+
+        # Verify final state: correct tables and columns exist
+        assert _table_exists(v2_db, "memories")
+        assert _table_exists(v2_db, "messages")
+        assert not _table_exists(v2_db, "handoff_messages")
+
+        assert _column_exists(v2_db, "memories", "foundational")
+        assert not _column_exists(v2_db, "memories", "importance")
+
+        assert _column_exists(v2_db, "messages", "channel")
+        assert _column_exists(v2_db, "messages", "priority")
+
+        # Verify data was preserved and migrated correctly
+        with v2_db.connect() as conn:
+            # Check memories table
+            mem_result = conn.execute(text("SELECT COUNT(*) FROM memories"))
+            assert mem_result.fetchone()[0] == 1
+
+            # Check messages table
+            msg_result = conn.execute(text("SELECT COUNT(*) FROM messages"))
+            assert msg_result.fetchone()[0] == 1
 
 
 # ── Message Service Tests: send_message ──────────────────────────────────
@@ -917,19 +943,29 @@ class TestPollMessages:
 
     def test_filters_by_since_timestamp(self, v3_db):
         """Test that since parameter filters by timestamp."""
-        # Send first message
-        send_message("test", "code", "Message 1")
+        # Send first message with timestamp in the past
+        msg1 = send_message("test", "code", "Message 1")
 
-        # Note the time
-        since_time = datetime.now(timezone.utc)
+        # Manually set created_at to be in the past
+        engine, Session = v3_db
+        with engine.connect() as conn:
+            past_time = datetime.now(timezone.utc) - timedelta(seconds=2)
+            conn.execute(text(
+                "UPDATE messages SET created_at = :past WHERE id = :id"
+            ), {"past": past_time, "id": msg1["id"]})
+            conn.commit()
 
-        # Wait a moment and send another
-        send_message("test", "code", "Message 2")
+        # Note the time (between first and second message)
+        since_time = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+        # Send second message (will have current timestamp)
+        msg2 = send_message("test", "code", "Message 2")
 
         result = poll_messages("code", since=since_time)
 
-        # Should only get messages after since_time
-        assert result["count"] >= 1
+        # Should only get message 2 (created after since_time)
+        assert result["count"] == 1
+        assert result["messages"][0]["id"] == msg2["id"]
 
     def test_filters_by_channel(self, v3_db):
         """Test that channel parameter filters correctly."""

@@ -1,5 +1,5 @@
 """
-Knowledge graph service for Claude Memory Palace.
+Knowledge graph service for Memory Palace.
 
 Provides functions for creating, traversing, and managing relationships
 between memories via the memory_edges table.

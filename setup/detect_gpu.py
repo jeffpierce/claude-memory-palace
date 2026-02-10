@@ -1,4 +1,4 @@
-"""GPU detection utilities for Claude Memory Palace."""
+"""GPU detection utilities for Memory Palace."""
 
 import subprocess
 import re

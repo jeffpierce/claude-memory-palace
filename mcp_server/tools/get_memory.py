@@ -1,4 +1,4 @@
-"""Get memory by ID tool for Claude Memory Palace MCP server."""
+"""Get memory by ID tool for Memory Palace MCP server."""
 from typing import Any, List, Optional, Union
 
 from memory_palace.services import get_memory_by_id, get_memories_by_ids

@@ -1,5 +1,5 @@
 """
-Link tool for Claude Memory Palace MCP server.
+Link tool for Memory Palace MCP server.
 """
 from typing import Any, Dict, Optional
 

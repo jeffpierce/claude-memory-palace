@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Claude Memory Palace — Linux GUI Launcher
+Memory Palace — Linux GUI Launcher
 
 Thin wrapper that launches the cross-platform GUI installer.
 Works on Desktop Linux and Steam Deck (SteamOS).
@@ -18,11 +18,11 @@ from gui.app import InstallerApp
 
 def main():
     # Detect Steam Deck for title
-    title = "Claude Memory Palace Setup"
+    title = "Memory Palace Setup"
     try:
         with open("/etc/os-release", "r") as f:
             if "steamos" in f.read().lower():
-                title = "Claude Memory Palace Setup — Steam Deck 🎮"
+                title = "Memory Palace Setup — Steam Deck 🎮"
     except (OSError, IOError):
         pass
 

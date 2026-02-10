@@ -124,7 +124,7 @@ def main():
     sys.path.insert(0, str(install_dir))
 
     from gui.app import InstallerApp
-    app = InstallerApp(title="Claude Memory Palace Setup — Windows")
+    app = InstallerApp(title="Memory Palace Setup — Windows")
     app.run()
 
 
@@ -177,7 +177,7 @@ if __name__ == "__main__":
 
 
 def main():
-    print("Claude Memory Palace — Windows Installer Builder\n")
+    print("Memory Palace — Windows Installer Builder\n")
 
     if not check_pyinstaller():
         print("Installing PyInstaller...")

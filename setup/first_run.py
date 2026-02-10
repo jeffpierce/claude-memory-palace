@@ -1,4 +1,4 @@
-"""Interactive first-time setup wizard for Claude Memory Palace."""
+"""Interactive first-time setup wizard for Memory Palace."""
 
 import subprocess
 import sys
@@ -145,9 +145,9 @@ def run_setup_wizard() -> dict:
         "success": False,
     }
 
-    print_header("Claude Memory Palace - First Time Setup")
+    print_header("Memory Palace - First Time Setup")
 
-    print("This wizard will help you configure Claude Memory Palace")
+    print("This wizard will help you configure Memory Palace")
     print("by detecting your hardware and setting up the required models.\n")
 
     # Step 1: GPU Detection
@@ -166,7 +166,7 @@ def run_setup_wizard() -> dict:
             print(f"Free VRAM: {detailed['vram_free_gb']} GB")
     else:
         print("No NVIDIA GPU detected.")
-        print("\nClaude Memory Palace requires an NVIDIA GPU with CUDA support")
+        print("\nMemory Palace requires an NVIDIA GPU with CUDA support")
         print("for running local embedding and LLM models.")
         print("\nYou can still use the system with CPU-only inference,")
         print("but performance will be significantly slower.")
@@ -275,14 +275,14 @@ def run_setup_wizard() -> dict:
 
     if len(results["models_downloaded"]) == 2:
         results["success"] = True
-        print("Claude Memory Palace is ready to use!\n")
+        print("Memory Palace is ready to use!\n")
         print("Configuration:")
         print(f"  Embedding Model: {embed_model}")
         print(f"  LLM Model: {llm_model}")
         print(f"  GPU: {results['gpu'] or 'CPU-only'}")
         print("\nNext steps:")
         print("1. Configure MCP in Claude Desktop (see docs/README.md)")
-        print("2. Start using memory tools in your Claude conversations")
+        print("2. Start using memory tools in your AI conversations")
     else:
         print("Setup partially complete.\n")
         print("Please download the remaining models and re-run setup to verify.")

@@ -1,6 +1,9 @@
 """
-Message tool for Claude Memory Palace MCP server.
+Message tool for Memory Palace MCP server.
 """
+import shlex
+import subprocess
+import sys
 from typing import Any, Optional
 
 from memory_palace.services.message_service import (
@@ -11,7 +14,77 @@ from memory_palace.services.message_service import (
     subscribe,
     unsubscribe,
 )
+from memory_palace.config_v2 import get_notify_command
 from mcp_server.toon_wrapper import toon_response
+
+
+def _execute_notify_hook(
+    command_template: str,
+    send_result: dict,
+    from_instance: str,
+    to_instance: str,
+    message_type: str,
+    subject: Optional[str],
+    channel: Optional[str],
+    priority: int,
+) -> None:
+    """
+    Fire-and-forget post-send notification. Never raises.
+
+    Executes the configured notification command with template variable
+    substitution. All values are shell-escaped before substitution.
+
+    Args:
+        command_template: Shell command template with {variables}
+        send_result: Result dict from send_message (contains message_id)
+        from_instance: Sender instance
+        to_instance: Recipient instance
+        message_type: Type of message
+        subject: Message subject (may be None)
+        channel: Channel name (may be None)
+        priority: Message priority
+    """
+    try:
+        # Extract message_id from result
+        message_id = send_result.get("id", "")
+
+        # Build template variables dict
+        template_vars = {
+            "from_instance": str(from_instance),
+            "to_instance": str(to_instance),
+            "message_type": str(message_type),
+            "subject": str(subject) if subject is not None else "",
+            "channel": str(channel) if channel is not None else "",
+            "priority": str(priority),
+            "message_id": str(message_id),
+        }
+
+        # Shell-escape all values
+        escaped_vars = {k: shlex.quote(v) for k, v in template_vars.items()}
+
+        # Substitute into command template
+        command = command_template.format(**escaped_vars)
+
+        # Execute with timeout (fire-and-forget)
+        subprocess.run(
+            command,
+            shell=True,
+            timeout=5,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.TimeoutExpired:
+        # Log but don't fail the send
+        print(
+            f"Warning: Notification command timed out after 5s",
+            file=sys.stderr,
+        )
+    except Exception as e:
+        # Log but don't fail the send
+        print(
+            f"Warning: Notification hook failed: {e}",
+            file=sys.stderr,
+        )
 
 
 def register_message(mcp):
@@ -71,7 +144,7 @@ def register_message(mcp):
         if action == "send":
             if not from_instance or not to_instance or not content:
                 return {"error": "send requires from_instance, to_instance, and content"}
-            return send_message(
+            result = send_message(
                 from_instance=from_instance,
                 to_instance=to_instance,
                 content=content,
@@ -80,6 +153,22 @@ def register_message(mcp):
                 channel=channel,
                 priority=priority,
             )
+
+            # Execute post-send notification hook if configured
+            notify_cmd = get_notify_command()
+            if notify_cmd is not None and result.get("success"):
+                _execute_notify_hook(
+                    command_template=notify_cmd,
+                    send_result=result,
+                    from_instance=from_instance,
+                    to_instance=to_instance,
+                    message_type=message_type,
+                    subject=subject,
+                    channel=channel,
+                    priority=priority,
+                )
+
+            return result
         elif action == "get":
             if not instance_id:
                 return {"error": "get requires instance_id"}

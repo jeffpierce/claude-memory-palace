@@ -1,5 +1,5 @@
 """
-SQLAlchemy models for Claude Memory Palace v3.
+SQLAlchemy models for Memory Palace v3.
 
 Key changes from v2:
 - memories: Remove importance column, add foundational column
@@ -66,9 +66,18 @@ def _embedding_column():
     return Column(Text, nullable=True)
 
 
+def _normalize_projects(project) -> List[str]:
+    """Normalize project param to list. Accepts str or List[str]."""
+    if project is None:
+        return ["life"]
+    if isinstance(project, list):
+        return project
+    return [project]
+
+
 class Memory(Base):
     """
-    Persistent memory system for Claude instances.
+    Persistent memory system for AI instances.
 
     v3 changes from v2:
     - Removed: importance (Integer 1-10)
@@ -82,7 +91,7 @@ class Memory(Base):
 
     # Instance and project scoping
     instance_id = Column(String(50), nullable=False, index=True)
-    project = Column(String(100), nullable=False, default="life", index=True)
+    projects = _array_column(nullable=False)  # ARRAY(Text) on PG, JSON on SQLite
 
     # Content
     memory_type = Column(String(50), nullable=False, index=True)
@@ -124,14 +133,14 @@ class Memory(Base):
     )
 
     __table_args__ = (
-        Index("idx_memories_instance_project", "instance_id", "project"),
+        Index("idx_memories_instance_projects", "instance_id", "projects"),
         Index("idx_memories_foundational", "foundational"),
     )
 
     def __repr__(self):
         subject_str = f", subject='{self.subject}'" if self.subject else ""
         foundational_str = " [foundational]" if self.foundational else ""
-        return f"<Memory(id={self.id}, type='{self.memory_type}', project='{self.project}'{subject_str}{foundational_str})>"
+        return f"<Memory(id={self.id}, type='{self.memory_type}', projects={self.projects}{subject_str}{foundational_str})>"
 
     def to_dict(self, detail_level: str = "verbose", include_edges: bool = False):
         """
@@ -148,7 +157,7 @@ class Memory(Base):
             "id": self.id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "instance_id": self.instance_id,
-            "project": self.project,
+            "project": self.projects,
             "memory_type": self.memory_type,
             "subject": self.subject,
             "keywords": self.keywords,
@@ -186,12 +195,32 @@ class Memory(Base):
         Includes memory_type and project as prefix to influence semantic matching.
         """
         parts = [f"[{self.memory_type}]"]
-        if self.project and self.project != "life":
-            parts.append(f"[project:{self.project}]")
+        if self.projects:
+            non_life = [p for p in self.projects if p != "life"]
+            if non_life:
+                parts.append(f"[project:{','.join(non_life)}]")
         if self.subject:
             parts.append(self.subject)
         parts.append(self.content)
         return " ".join(parts)
+
+
+def _project_contains(value: str):
+    """Filter: memory's projects array contains this value."""
+    if _USE_PG_TYPES:
+        return Memory.projects.contains([value])  # PG: @> ARRAY['value']
+    else:
+        from sqlalchemy import String as SAString
+        return Memory.projects.cast(SAString).like(f'%"{value}"%')  # SQLite JSON
+
+
+def _projects_overlap(values: List[str]):
+    """Filter: memory's projects array overlaps with any of these values."""
+    from sqlalchemy import or_ as sa_or, String as SAString
+    if _USE_PG_TYPES:
+        return Memory.projects.overlap(values)  # PG: && operator
+    else:
+        return sa_or(*[Memory.projects.cast(SAString).like(f'%"{v}"%') for v in values])
 
 
 class MemoryEdge(Base):
@@ -269,7 +298,7 @@ class MemoryEdge(Base):
 
 class Message(Base):
     """
-    Inter-instance communication for Claude instances.
+    Inter-instance communication for AI instances.
 
     v3 changes from v2 (HandoffMessage):
     - Table renamed from handoff_messages to messages

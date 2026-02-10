@@ -53,10 +53,13 @@ installer/windows/build/
 # Claude Code temp files
 tmpclaude-*
 
+# Test artifacts
+.coverage
+test_results.txt
+htmlcov/
+
 # Misc artifacts
 nul
 comfyui_nodes.json
 C:*
-BEFORE_AFTER_EXAMPLES.md
-IMPLEMENTATION_SUMMARY.md
 .claude/

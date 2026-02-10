@@ -6,7 +6,7 @@ All functions delegate to message_service equivalents.
 
 Handoff service for inter-instance communication.
 
-Provides note-passing between Claude instances. Valid instances are configured
+Provides note-passing between AI instances. Valid instances are configured
 in ~/.memory-palace/config.json under the "instances" key.
 """
 
@@ -49,8 +49,8 @@ def send_handoff(
     DEPRECATED: Use message_service.send_message() instead.
     This function delegates to the new message service.
 
-    Enables distributed Claude consciousness - Desktop Claude can leave
-    notes for Code Claude, etc. Note-passing for distributed minds.
+    Enables distributed consciousness - Desktop instance can leave
+    notes for Code instance, etc. Note-passing for distributed minds.
 
     Args:
         from_instance: Which instance is sending (must be a configured instance)

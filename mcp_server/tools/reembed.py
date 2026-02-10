@@ -1,4 +1,4 @@
-"""Reembed tool for Claude Memory Palace MCP server."""
+"""Reembed tool for Memory Palace MCP server."""
 from typing import Any, Optional, List
 
 from memory_palace.services.maintenance_service import reembed_memories

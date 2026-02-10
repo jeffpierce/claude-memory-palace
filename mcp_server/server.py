@@ -1,5 +1,5 @@
 """
-MCP Server for Claude Memory Palace v2.0.
+MCP Server for Memory Palace v2.0.
 
 Provides tools for memory storage, retrieval, and inter-instance messaging.
 

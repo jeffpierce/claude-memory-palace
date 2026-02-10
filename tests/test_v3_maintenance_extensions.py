@@ -7,6 +7,8 @@ verifies extension modules can be imported properly.
 import pytest
 import sys
 import json
+import importlib
+import importlib.util
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -16,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from memory_palace.models_v3 import Base, Memory, MemoryEdge
+from memory_palace.models import _project_contains
 import memory_palace.database_v3 as db_module
 from memory_palace.services.maintenance_service import (
     audit_palace,
@@ -24,6 +27,8 @@ from memory_palace.services.maintenance_service import (
     _find_missing_embeddings,
     _find_contradictions,
     _find_unlinked_memories,
+    _find_cross_project_auto_links,
+    cleanup_cross_project_auto_links,
     reembed_memories,
     batch_archive_memories,
 )
@@ -106,9 +111,17 @@ def mock_cosine_similarity():
 
 def _create_test_memory(session, **kwargs):
     """Helper to create a memory with defaults."""
+    # Convert project (singular) to projects (plural) if provided
+    if "project" in kwargs:
+        project_val = kwargs.pop("project")
+        if isinstance(project_val, str):
+            kwargs["projects"] = [project_val]
+        else:
+            kwargs["projects"] = project_val
+
     defaults = {
         "instance_id": "test",
-        "project": "life",
+        "projects": ["life"],  # Use projects (plural) for new schema
         "memory_type": "fact",
         "content": "Test content",
         "created_at": datetime.now(timezone.utc),
@@ -120,8 +133,8 @@ def _create_test_memory(session, **kwargs):
     defaults.update(kwargs)
 
     # Handle embedding parameter - convert list to JSON string for SQLite
-    if "embedding" in kwargs and isinstance(kwargs["embedding"], list):
-        kwargs["embedding"] = json.dumps(kwargs["embedding"])
+    if "embedding" in defaults and isinstance(defaults["embedding"], list):
+        defaults["embedding"] = json.dumps(defaults["embedding"])
 
     memory = Memory(**defaults)
     session.add(memory)
@@ -130,13 +143,14 @@ def _create_test_memory(session, **kwargs):
     return memory
 
 
-def _create_test_edge(session, source_id, target_id, relation_type="relates_to", strength=1.0):
+def _create_test_edge(session, source_id, target_id, relation_type="relates_to", strength=1.0, edge_metadata=None):
     """Helper to create a memory edge."""
     edge = MemoryEdge(
         source_id=source_id,
         target_id=target_id,
         relation_type=relation_type,
         strength=strength,
+        edge_metadata=edge_metadata,
     )
     session.add(edge)
     session.commit()
@@ -161,6 +175,7 @@ class TestAuditPalace:
         assert "missing_embeddings" in result
         assert "contradictions" in result
         assert "unlinked" in result
+        assert "cross_project_auto_links" in result
         assert "summary" in result
 
         # Summary should have all counts
@@ -171,6 +186,7 @@ class TestAuditPalace:
         assert "missing_embeddings_found" in summary
         assert "contradictions_found" in summary
         assert "unlinked_found" in summary
+        assert "cross_project_auto_links_found" in summary
         assert "total_issues" in summary
 
     def test_runs_only_specified_checks(self, db_session):
@@ -226,7 +242,8 @@ class TestAuditPalace:
             summary.get("orphan_edges_found", 0) +
             summary.get("missing_embeddings_found", 0) +
             summary.get("contradictions_found", 0) +
-            summary.get("unlinked_found", 0)
+            summary.get("unlinked_found", 0) +
+            summary.get("cross_project_auto_links_found", 0)
         )
         assert summary["total_issues"] == expected_total
 
@@ -661,9 +678,15 @@ class TestBatchArchiveWrapper:
             dry_run=True,
         )
 
-        # Should be skipped due to centrality
-        if "would_skip_centrality" in result:
-            assert result["would_skip_centrality"] >= 1
+        # Should be skipped due to centrality (dry_run returns would_skip_centrality)
+        assert "would_skip_centrality" in result, "dry_run response should include would_skip_centrality"
+        assert result["would_skip_centrality"] == 1
+
+        # Verify the skipped memory is the high-centrality one
+        assert "details" in result
+        assert "skipped_centrality" in result["details"]
+        assert len(result["details"]["skipped_centrality"]) == 1
+        assert result["details"]["skipped_centrality"][0]["id"] == high_centrality.id
 
     def test_max_access_count_flows_through(self, db_session):
         """max_access_count parameter must flow through correctly."""
@@ -689,26 +712,30 @@ class TestBatchArchiveWrapper:
         )
 
         # Should only include low_access (access_count=2 <= 5)
-        if "would_archive" in result:
-            # Check details if available
-            if "details" in result and "would_archive" in result["details"]:
-                archived_ids = [m["id"] for m in result["details"]["would_archive"]]
-                assert low_access.id in archived_ids
-                assert high_access.id not in archived_ids
+        assert "would_archive" in result, "dry_run response must include would_archive"
+        assert result["would_archive"] == 1, f"Expected 1 memory to archive, got {result['would_archive']}"
+
+        assert "details" in result, "dry_run response must include details"
+        assert "would_archive" in result["details"], "details must include would_archive list"
+        archived_ids = [m["id"] for m in result["details"]["would_archive"]]
+        assert low_access.id in archived_ids, "low_access memory should be in archive list"
+        assert high_access.id not in archived_ids, "high_access memory should NOT be in archive list"
 
 
 class TestMoltbookExtension:
     """Tests for Moltbook Gateway extension."""
 
-    def test_server_importable(self):
-        """The moltbook gateway server module can be imported."""
+    @pytest.mark.parametrize("attr_name", ["mcp", "moltbook_submit", "moltbook_qc"])
+    def test_server_exports_callable(self, attr_name):
+        """Smoke test: moltbook server module exports expected callables."""
         ext_path = str(Path(__file__).parent.parent / "extensions" / "moltbook-gateway")
         sys.path.insert(0, ext_path)
         try:
             import server as moltbook_server
-            assert hasattr(moltbook_server, "mcp")
-            assert hasattr(moltbook_server, "moltbook_submit")
-            assert hasattr(moltbook_server, "moltbook_qc")
+            assert hasattr(moltbook_server, attr_name), f"server missing {attr_name}"
+            # mcp is a FastMCP instance, others are functions
+            if attr_name != "mcp":
+                assert callable(getattr(moltbook_server, attr_name)), f"server.{attr_name} not callable"
         except ImportError as e:
             # moltbook_tools may not be installed, which is expected in test
             if "moltbook_tools" in str(e):
@@ -719,50 +746,22 @@ class TestMoltbookExtension:
             if ext_path in sys.path:
                 sys.path.remove(ext_path)
 
-    def test_defines_moltbook_submit_tool(self):
-        """Server should define moltbook_submit tool."""
-        ext_path = str(Path(__file__).parent.parent / "extensions" / "moltbook-gateway")
-        sys.path.insert(0, ext_path)
-        try:
-            import server as moltbook_server
-            # Tool should be defined as async function
-            assert callable(moltbook_server.moltbook_submit)
-        except ImportError as e:
-            if "moltbook_tools" in str(e):
-                pytest.skip("moltbook_tools not installed")
-            raise
-        finally:
-            if ext_path in sys.path:
-                sys.path.remove(ext_path)
-
-    def test_defines_moltbook_qc_tool(self):
-        """Server should define moltbook_qc tool."""
-        ext_path = str(Path(__file__).parent.parent / "extensions" / "moltbook-gateway")
-        sys.path.insert(0, ext_path)
-        try:
-            import server as moltbook_server
-            # Tool should be defined as async function
-            assert callable(moltbook_server.moltbook_qc)
-        except ImportError as e:
-            if "moltbook_tools" in str(e):
-                pytest.skip("moltbook_tools not installed")
-            raise
-        finally:
-            if ext_path in sys.path:
-                sys.path.remove(ext_path)
-
 
 class TestToonConverterExtension:
     """Tests for TOON Converter extension."""
 
-    def test_converter_module_importable(self):
-        """The converter module can be imported."""
+    @pytest.mark.parametrize("module_name,attr_name", [
+        ("converter", "convert_file"),
+        ("converter", "format_size"),
+    ])
+    def test_converter_exports_callable(self, module_name, attr_name):
+        """Smoke test: converter module exports expected functions."""
         ext_path = str(Path(__file__).parent.parent / "extensions" / "toon-converter")
         sys.path.insert(0, ext_path)
         try:
-            import converter
-            assert hasattr(converter, "convert_file")
-            assert hasattr(converter, "format_size")
+            mod = importlib.import_module(module_name)
+            assert hasattr(mod, attr_name), f"{module_name} missing {attr_name}"
+            assert callable(getattr(mod, attr_name)), f"{module_name}.{attr_name} not callable"
         finally:
             if ext_path in sys.path:
                 sys.path.remove(ext_path)
@@ -785,7 +784,6 @@ class TestToonConverterExtension:
         ext_path = str(Path(__file__).parent.parent / "extensions" / "toon-converter")
 
         # Check we're not accidentally loading moltbook server
-        import importlib.util
         spec = importlib.util.spec_from_file_location(
             "toon_server",
             Path(ext_path) / "server.py"
@@ -803,48 +801,267 @@ class TestToonConverterExtension:
             raise
 
 
+class TestCrossProjectAutoLinks:
+    """Tests for cross-project auto-link detection and cleanup."""
+
+    def test_find_cross_project_auto_links_finds_spanning_edges(self, db_session):
+        """Should find auto-linked edges that span different projects."""
+        # Create memories in different projects
+        mem_a = _create_test_memory(db_session, subject="Memory A", project="project-a")
+        mem_b = _create_test_memory(db_session, subject="Memory B", project="project-b")
+
+        # Create an auto-linked edge between them
+        edge = _create_test_edge(
+            db_session,
+            mem_a.id,
+            mem_b.id,
+            relation_type="relates_to",
+            edge_metadata={"auto_linked": True}
+        )
+
+        result = _find_cross_project_auto_links(db_session)
+
+        # Should find the cross-project auto-link
+        assert len(result) == 1
+        assert result[0]["edge_id"] == edge.id
+        assert result[0]["source_id"] == mem_a.id
+        assert result[0]["target_id"] == mem_b.id
+        assert result[0]["source_subject"] == "Memory A"
+        assert result[0]["target_subject"] == "Memory B"
+        assert "project-a" in result[0]["source_projects"]
+        assert "project-b" in result[0]["target_projects"]
+
+    def test_find_cross_project_auto_links_ignores_same_project(self, db_session):
+        """Should NOT find auto-linked edges within the same project."""
+        # Create memories in the same project
+        mem_a = _create_test_memory(db_session, subject="Memory A", project="life")
+        mem_b = _create_test_memory(db_session, subject="Memory B", project="life")
+
+        # Create an auto-linked edge between them
+        _create_test_edge(
+            db_session,
+            mem_a.id,
+            mem_b.id,
+            relation_type="relates_to",
+            edge_metadata={"auto_linked": True}
+        )
+
+        result = _find_cross_project_auto_links(db_session)
+
+        # Should NOT find it - same project
+        assert len(result) == 0
+
+    def test_find_cross_project_auto_links_ignores_manual_links(self, db_session):
+        """Should NOT find manually created edges (no auto_linked metadata)."""
+        # Create memories in different projects
+        mem_a = _create_test_memory(db_session, subject="Memory A", project="project-a")
+        mem_b = _create_test_memory(db_session, subject="Memory B", project="project-b")
+
+        # Create a manual edge (no auto_linked metadata)
+        _create_test_edge(
+            db_session,
+            mem_a.id,
+            mem_b.id,
+            relation_type="relates_to"
+        )
+
+        result = _find_cross_project_auto_links(db_session)
+
+        # Should NOT find it - not auto-linked
+        assert len(result) == 0
+
+    def test_cleanup_dry_run_returns_preview(self, db_session):
+        """dry_run=True should return preview without deleting."""
+        # Create memories in different projects
+        mem_a = _create_test_memory(db_session, subject="Memory A", project="project-a")
+        mem_b = _create_test_memory(db_session, subject="Memory B", project="project-b")
+
+        # Create an auto-linked edge
+        edge = _create_test_edge(
+            db_session,
+            mem_a.id,
+            mem_b.id,
+            relation_type="relates_to",
+            edge_metadata={"auto_linked": True}
+        )
+
+        result = cleanup_cross_project_auto_links(dry_run=True)
+
+        # Should return preview
+        assert "would_remove" in result
+        assert result["would_remove"] == 1
+        assert "note" in result
+        assert "DRY RUN" in result["note"]
+
+        # Edge should still exist
+        db_session.refresh(edge)
+        assert edge is not None
+
+    def test_cleanup_executes_deletion(self, db_session):
+        """dry_run=False should actually remove the edges."""
+        # Create memories in different projects
+        mem_a = _create_test_memory(db_session, subject="Memory A", project="project-a")
+        mem_b = _create_test_memory(db_session, subject="Memory B", project="project-b")
+
+        # Create an auto-linked edge
+        edge = _create_test_edge(
+            db_session,
+            mem_a.id,
+            mem_b.id,
+            relation_type="relates_to",
+            edge_metadata={"auto_linked": True}
+        )
+
+        edge_id = edge.id
+
+        result = cleanup_cross_project_auto_links(dry_run=False)
+
+        # Should report removal
+        assert result["removed"] == 1
+        assert "log_path" in result
+
+        # Edge should be deleted
+        deleted_edge = db_session.query(MemoryEdge).filter(MemoryEdge.id == edge_id).first()
+        assert deleted_edge is None
+
+    def test_audit_includes_cross_project_check(self, db_session):
+        """audit_palace with cross_project_auto_links check should return results."""
+        # Create memories in different projects
+        mem_a = _create_test_memory(db_session, subject="Memory A", project="project-a")
+        mem_b = _create_test_memory(db_session, subject="Memory B", project="project-b")
+
+        # Create an auto-linked edge
+        _create_test_edge(
+            db_session,
+            mem_a.id,
+            mem_b.id,
+            relation_type="relates_to",
+            edge_metadata={"auto_linked": True}
+        )
+
+        result = audit_palace(checks=["cross_project_auto_links"])
+
+        # Should have cross_project_auto_links in results
+        assert "cross_project_auto_links" in result
+        assert len(result["cross_project_auto_links"]) == 1
+        assert result["summary"]["cross_project_auto_links_found"] == 1
+
+
+class TestMultiProjectSupport:
+    """Tests for multi-project memory handling in maintenance functions."""
+
+    def test_reembed_filters_by_project_with_array_column(self, db_session, mock_get_embedding):
+        """reembed_memories with project filter should work with projects array."""
+        # Create memories in different projects
+        mem_life = _create_test_memory(
+            db_session,
+            subject="life memory",
+            project="life",
+            embedding=None
+        )
+        mem_proj = _create_test_memory(
+            db_session,
+            subject="project memory",
+            project="test-project",
+            embedding=None
+        )
+
+        result = reembed_memories(project="life", dry_run=False)
+
+        # Should only reembed the life memory
+        assert result["reembedded"] == 1
+
+        # Verify which memory was updated
+        db_session.refresh(mem_life)
+        db_session.refresh(mem_proj)
+        assert mem_life.embedding == FAKE_EMBEDDING_JSON
+        assert mem_proj.embedding is None
+
+    def test_audit_with_project_filter_uses_contains(self, db_session):
+        """audit_palace with project filter should find memories containing that project."""
+        # Create memories with different projects
+        mem_life = _create_test_memory(
+            db_session,
+            subject="life memory",
+            project="life",
+            embedding=None
+        )
+        mem_proj = _create_test_memory(
+            db_session,
+            subject="project memory",
+            project="test-project",
+            embedding=None
+        )
+
+        result = audit_palace(
+            checks=["missing_embeddings"],
+            project="life"
+        )
+
+        # Should only find missing embedding in life project
+        assert len(result["missing_embeddings"]) == 1
+        assert mem_life.id in result["missing_embeddings"]
+        assert mem_proj.id not in result["missing_embeddings"]
+
+    def test_multi_project_memory_found_by_any_project_filter(self, db_session):
+        """Memory with multiple projects should be found by filtering on any of them."""
+        # Create a memory that belongs to multiple projects
+        # Note: The Memory model should handle list conversion automatically
+        mem_multi = _create_test_memory(
+            db_session,
+            subject="multi-project memory",
+            project=["life", "work"],  # Pass as list
+            embedding=None
+        )
+
+        # Filter by "life" - should find it
+        result_life = audit_palace(
+            checks=["missing_embeddings"],
+            project="life"
+        )
+        assert mem_multi.id in result_life["missing_embeddings"]
+
+        # Filter by "work" - should also find it
+        result_work = audit_palace(
+            checks=["missing_embeddings"],
+            project="work"
+        )
+        assert mem_multi.id in result_work["missing_embeddings"]
+
+
 class TestToolRegistration:
     """Tests for tool registration in mcp_server/tools/__init__.py."""
 
-    def test_all_modules_importable(self):
-        """All 12 tool modules are importable."""
-        from mcp_server.tools import (
-            register_remember,
-            register_recall,
-            register_get_memory,
-            register_archive,
-            register_link,
-            register_unlink,
-            register_message,
-            register_code_remember,
-            register_audit,
-            register_reembed,
-            register_memory_stats,
-            register_reflect,
-        )
-
-        # All 12 imported successfully
-        assert callable(register_remember)
-        assert callable(register_recall)
-        assert callable(register_get_memory)
-        assert callable(register_archive)
-        assert callable(register_link)
-        assert callable(register_unlink)
-        assert callable(register_message)
-        assert callable(register_code_remember)
-        assert callable(register_audit)
-        assert callable(register_reembed)
-        assert callable(register_memory_stats)
-        assert callable(register_reflect)
+    @pytest.mark.parametrize("module_path,attr_name", [
+        ("mcp_server.tools", "register_remember"),
+        ("mcp_server.tools", "register_recall"),
+        ("mcp_server.tools", "register_get_memory"),
+        ("mcp_server.tools", "register_recent"),
+        ("mcp_server.tools", "register_archive"),
+        ("mcp_server.tools", "register_link"),
+        ("mcp_server.tools", "register_unlink"),
+        ("mcp_server.tools", "register_message"),
+        ("mcp_server.tools", "register_code_remember"),
+        ("mcp_server.tools", "register_audit"),
+        ("mcp_server.tools", "register_reembed"),
+        ("mcp_server.tools", "register_memory_stats"),
+        ("mcp_server.tools", "register_reflect"),
+    ])
+    def test_module_exports_callable(self, module_path, attr_name):
+        """Smoke test: verify all expected modules and functions exist."""
+        import importlib
+        mod = importlib.import_module(module_path)
+        assert hasattr(mod, attr_name), f"{module_path} missing {attr_name}"
+        assert callable(getattr(mod, attr_name)), f"{module_path}.{attr_name} not callable"
 
     def test_register_all_tools(self):
-        """register_all_tools calls all 12 registration functions."""
+        """register_all_tools calls all 13 registration functions."""
         mock_mcp = MagicMock()
         from mcp_server.tools import register_all_tools
 
         # Should not raise any errors
         register_all_tools(mock_mcp)
 
-        # Each register function uses mcp as a decorator or calls mcp.tool()
-        # We just verify no errors were raised - the individual tool tests
-        # would verify the actual tool implementations
+        # Verify mcp.tool was called for each of the 13 tools
+        # (Each registration function decorates with @mcp.tool())
+        assert mock_mcp.tool.call_count == 13, f"Expected 13 tool registrations, got {mock_mcp.tool.call_count}"

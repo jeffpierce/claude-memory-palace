@@ -1,5 +1,5 @@
 """
-AI client discovery and MCP configuration for Claude Memory Palace installer.
+AI client discovery and MCP configuration for Memory Palace installer.
 
 Discovers installed MCP-compatible AI clients and configures them.
 """

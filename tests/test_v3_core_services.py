@@ -45,24 +45,22 @@ with patch.object(memory_palace.config_v2, 'is_postgres', return_value=False):
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 
-# Fake embeddings for deterministic testing
-FAKE_EMBEDDING_A = [0.1] * 768  # 768-dim like nomic-embed-text
-FAKE_EMBEDDING_B = [0.2] * 768
-FAKE_EMBEDDING_C = [0.9] * 768  # Very different
+# ── Known Embedding Vectors with Geometric Properties ────────────────
 
+# Create 768-dimensional vectors with known cosine similarities
+# Pad to 768 dimensions (nomic-embed-text size) with zeros
+def _make_vector(coords: List[float]) -> List[float]:
+    """Pad a small coordinate list to 768 dims with zeros."""
+    padded = coords + [0.0] * (768 - len(coords))
+    return padded
 
-def _fake_cosine(a: List[float], b: List[float]) -> float:
-    """Return high similarity for identical embeddings, low for different."""
-    if a == b:
-        return 0.95
-    # Simple heuristic based on first element difference
-    diff = abs(a[0] - b[0])
-    if diff < 0.2:
-        return 0.85  # Similar
-    elif diff < 0.5:
-        return 0.60  # Moderately similar
-    else:
-        return 0.30  # Different
+# Unit vectors pointing in different directions (for cosine similarity testing)
+VEC_NORTH = _make_vector([1.0, 0.0, 0.0])  # (1, 0, 0, ...)
+VEC_SOUTH = _make_vector([-1.0, 0.0, 0.0])  # (-1, 0, 0, ...) — cos sim = -1
+VEC_EAST = _make_vector([0.0, 1.0, 0.0])  # (0, 1, 0, ...) — cos sim with NORTH = 0
+VEC_NORTHEAST = _make_vector([0.707, 0.707, 0.0])  # 45° from NORTH — cos sim ≈ 0.707
+VEC_NORTH_CLOSE = _make_vector([0.95, 0.31, 0.0])  # Close to NORTH — cos sim ≈ 0.95
+VEC_UNRELATED = _make_vector([0.0, 0.0, 1.0])  # (0, 0, 1, ...) — orthogonal to all above
 
 
 @pytest.fixture(autouse=True)
@@ -99,39 +97,40 @@ def test_db():
 
 @pytest.fixture(autouse=True)
 def mock_embeddings():
-    """Mock embedding generation and similarity calculation."""
+    """
+    Mock embedding generation with known geometric vectors.
+
+    Does NOT mock cosine_similarity — we use the REAL implementation from embeddings.py
+    so that the actual similarity scoring, centrality weighting, and ranking logic are tested.
+    """
     import json
 
+    # Mapping of content patterns to known vectors
+    VECTOR_MAP = {
+        "north": VEC_NORTH,
+        "south": VEC_SOUTH,
+        "east": VEC_EAST,
+        "northeast": VEC_NORTHEAST,
+        "north_close": VEC_NORTH_CLOSE,
+        "unrelated": VEC_UNRELATED,
+    }
+
     def get_embedding_mock(text: str):
-        """Return deterministic fake embedding based on text content."""
-        # Use text hash to decide which embedding to return
-        if "similar" in text.lower() or "alpha" in text.lower():
-            embedding = FAKE_EMBEDDING_A.copy()
-        elif "related" in text.lower() or "beta" in text.lower():
-            embedding = FAKE_EMBEDDING_B.copy()
-        elif "different" in text.lower() or "gamma" in text.lower():
-            embedding = FAKE_EMBEDDING_C.copy()
-        else:
-            # Default to EMBEDDING_A for generic content
-            embedding = FAKE_EMBEDDING_A.copy()
+        """Return known vector based on text content markers."""
+        text_lower = text.lower()
 
-        # For SQLite, embeddings are stored as JSON strings in Text columns
-        # Serialize to JSON string to match production behavior
-        return json.dumps(embedding)
+        # Check for vector markers in the text
+        for marker, vector in VECTOR_MAP.items():
+            if marker in text_lower:
+                # Return as JSON string (SQLite storage format)
+                return json.dumps(vector)
 
-    def cosine_similarity_mock(a, b):
-        """Deserialize JSON strings and compute similarity."""
-        import json
-        # Handle both list and JSON string inputs
-        if isinstance(a, str):
-            a = json.loads(a)
-        if isinstance(b, str):
-            b = json.loads(b)
-        return _fake_cosine(a, b)
+        # Default to VEC_NORTH for unmarked content
+        return json.dumps(VEC_NORTH)
 
+    # Mock get_embedding BUT NOT cosine_similarity — let the real math run
     with patch("memory_palace.services.memory_service.get_embedding", side_effect=get_embedding_mock):
-        with patch("memory_palace.services.memory_service.cosine_similarity", side_effect=cosine_similarity_mock):
-            yield
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -278,27 +277,27 @@ class TestRemember:
             "same_project_only": True,
             "classify_edges": False,
         }):
-            # Create first memory with "similar" keyword to get FAKE_EMBEDDING_A
+            # Create first memory with VEC_NORTH_CLOSE
             first = remember(
                 instance_id="test",
                 memory_type="fact",
-                content="This is similar content alpha.",
-                subject="Similar fact alpha",
+                content="This is north_close content.",
+                subject="Similar fact",
                 project="test-project"
             )
 
-            # Create second similar memory with "similar" keyword
+            # Create second memory with VEC_NORTH (cos sim ≈ 0.95 > 0.75 threshold)
             second = remember(
                 instance_id="test",
                 memory_type="fact",
-                content="This is similar content alpha too.",
-                subject="Similar fact alpha two",
+                content="This is north content too.",
+                subject="Similar fact two",
                 project="test-project",
                 auto_link=True  # Explicitly enable
             )
 
-            # Should have auto-created link
-            assert "links_created" in second
+            # Should have auto-created link (similarity ≈ 0.95 > threshold 0.75)
+            assert "links_created" in second, "Should auto-link similar memories"
             assert len(second["links_created"]) > 0
             assert second["links_created"][0]["target"] == first["id"]
 
@@ -327,27 +326,28 @@ class TestRemember:
             "same_project_only": True,
             "classify_edges": False,
         }):
-            # Create memory in project A
+            # Create memory in project A with VEC_NORTH_CLOSE
             first = remember(
                 instance_id="test",
                 memory_type="fact",
-                content="This is similar content alpha.",
-                subject="Similar fact alpha",
+                content="This is north_close content.",
+                subject="Similar fact",
                 project="project-A"
             )
 
-            # Create similar memory in project B
+            # Create similar memory in project B with VEC_NORTH (high similarity, different project)
             second = remember(
                 instance_id="test",
                 memory_type="fact",
-                content="This is similar content alpha too.",
-                subject="Similar fact alpha two",
+                content="This is north content too.",
+                subject="Similar fact two",
                 project="project-B",
                 auto_link=True
             )
 
             # Should NOT have auto-created links (different projects)
-            assert "links_created" not in second or len(second.get("links_created", [])) == 0
+            assert "links_created" not in second or len(second.get("links_created", [])) == 0, \
+                "Should NOT auto-link across projects when same_project_only=True"
 
             # Verify no edge exists
             db = get_session()
@@ -365,29 +365,58 @@ class TestRecall:
     """Tests for recall() — searching memories."""
 
     def test_returns_results_with_semantic_search(self):
-        """Returns results with semantic search when embedding available."""
+        """Returns results with semantic search and ranks by actual cosine similarity."""
         from memory_palace.services.memory_service import remember, recall
 
-        # Create memories with different embeddings
-        remember(
+        # Create memories with known embeddings
+        # VEC_NORTH and VEC_SOUTH are opposite (cos sim = -1)
+        # VEC_NORTH_CLOSE is close to VEC_NORTH (cos sim ≈ 0.95)
+        m_north = remember(
             instance_id="test",
             memory_type="fact",
-            content="This is similar alpha content.",
-            subject="Alpha"
+            content="Content pointing north.",
+            subject="North Memory"
         )
-        remember(
+        m_south = remember(
             instance_id="test",
             memory_type="fact",
-            content="This is different gamma content.",
-            subject="Gamma"
+            content="Content pointing south.",
+            subject="South Memory"
+        )
+        m_close = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="Content pointing north_close.",
+            subject="Close to North"
         )
 
-        # Search for "similar" should match alpha better
-        result = recall(query="similar alpha", synthesize=False)
+        # Query with VEC_NORTH — should rank north_close > north > south
+        result = recall(query="north", synthesize=False, limit=10)
 
-        assert result["count"] > 0
+        assert result["count"] == 3
         assert result["search_method"].startswith("semantic")
-        assert len(result["memories"]) > 0
+        assert len(result["memories"]) == 3
+
+        # Check ranking order: north_close (cos≈0.95) should be first, south (cos≈-1) should be last
+        # Actual ranking uses centrality-weighted scoring, but with all memories having equal
+        # access_count and centrality, similarity should dominate
+        ids_in_order = [m["id"] for m in result["memories"]]
+
+        # m_close should rank higher than m_south
+        assert ids_in_order.index(m_close["id"]) < ids_in_order.index(m_south["id"])
+
+        # Check that similarity scores are included and make sense
+        memories_by_id = {m["id"]: m for m in result["memories"]}
+
+        # north_close should have high similarity (≈0.95 with VEC_NORTH query)
+        close_sim = memories_by_id[m_close["id"]].get("similarity_score")
+        assert close_sim is not None
+        assert close_sim > 0.9, f"Expected north_close similarity > 0.9, got {close_sim}"
+
+        # south should have negative similarity (≈-1 with VEC_NORTH query)
+        south_sim = memories_by_id[m_south["id"]].get("similarity_score")
+        assert south_sim is not None
+        assert south_sim < 0.0, f"Expected south similarity < 0, got {south_sim}"
 
     def test_falls_back_to_keyword_search(self):
         """Falls back to keyword search when embedding fails."""
@@ -407,82 +436,120 @@ class TestRecall:
             assert "keyword" in result["search_method"].lower()
 
     def test_filters_by_project_single_string(self):
-        """Filters by project (single string)."""
+        """Filters by project (single string) with semantic search."""
         from memory_palace.services.memory_service import remember, recall
 
-        remember(
+        # Store memories in different projects, both with VEC_NORTH
+        m_a = remember(
             instance_id="test",
             memory_type="fact",
-            content="Content in project A.",
+            content="Content pointing north in project A.",
+            subject="Project A Memory",
             project="project-A"
         )
-        remember(
+        m_b = remember(
             instance_id="test",
             memory_type="fact",
-            content="Content in project B.",
+            content="Content pointing north in project B.",
+            subject="Project B Memory",
             project="project-B"
         )
 
-        result = recall(query="content", project="project-A", synthesize=False)
+        # Query with VEC_NORTH, filtered to project-A
+        result = recall(query="north", project="project-A", synthesize=False)
 
-        assert result["count"] == 1
-        assert result["memories"][0]["project"] == "project-A"
+        assert result["count"] == 1, f"Expected 1 memory, got {result['count']}"
+        assert result["memories"][0]["project"] == ["project-A"]
+        assert result["memories"][0]["id"] == m_a["id"]
 
     def test_filters_by_project_list(self):
-        """Filters by project (list of strings)."""
+        """Filters by project (list of strings) with semantic search."""
         from memory_palace.services.memory_service import remember, recall
 
-        remember(instance_id="test", memory_type="fact", content="A", project="project-A")
-        remember(instance_id="test", memory_type="fact", content="B", project="project-B")
-        remember(instance_id="test", memory_type="fact", content="C", project="project-C")
+        # All memories have VEC_NORTH for consistent similarity
+        m_a = remember(instance_id="test", memory_type="fact", content="north in A", project="project-A")
+        m_b = remember(instance_id="test", memory_type="fact", content="north in B", project="project-B")
+        m_c = remember(instance_id="test", memory_type="fact", content="north in C", project="project-C")
 
-        result = recall(query="content", project=["project-A", "project-B"], synthesize=False)
+        result = recall(query="north", project=["project-A", "project-B"], synthesize=False)
 
-        assert result["count"] == 2
-        projects = {m["project"] for m in result["memories"]}
+        assert result["count"] == 2, f"Expected 2 memories, got {result['count']}"
+
+        # Verify correct projects are included
+        returned_ids = {m["id"] for m in result["memories"]}
+        assert returned_ids == {m_a["id"], m_b["id"]}
+
+        # Check that projects are correct
+        projects = set()
+        for m in result["memories"]:
+            for p in m["project"]:
+                projects.add(p)
         assert projects == {"project-A", "project-B"}
 
     def test_filters_by_memory_type_with_wildcard(self):
-        """Filters by memory_type with wildcard (e.g., 'code_*' → SQL LIKE 'code_%')."""
+        """Filters by memory_type with wildcard and ranks by similarity."""
         from memory_palace.services.memory_service import remember, recall
 
-        remember(instance_id="test", memory_type="code_function", content="Function A")
-        remember(instance_id="test", memory_type="code_class", content="Class B")
-        remember(instance_id="test", memory_type="fact", content="Fact C")
+        # Store memories with different types but similar vectors
+        m_func = remember(instance_id="test", memory_type="code_function", content="north Function A")
+        m_class = remember(instance_id="test", memory_type="code_class", content="north_close Class B")
+        m_fact = remember(instance_id="test", memory_type="fact", content="north Fact C")
 
-        result = recall(query="content", memory_type="code_*", synthesize=False)
+        # Query with wildcard filter for code_*
+        result = recall(query="north", memory_type="code_*", synthesize=False)
 
-        assert result["count"] == 2
+        assert result["count"] == 2, f"Expected 2 memories, got {result['count']}"
+
+        # Verify correct types are returned
+        returned_ids = {m["id"] for m in result["memories"]}
+        assert returned_ids == {m_func["id"], m_class["id"]}
+
         types = {m["memory_type"] for m in result["memories"]}
         assert types == {"code_function", "code_class"}
 
+        # Verify ranking: m_func (north, cos=1.0 with query) should rank higher than m_class (north_close, cos≈0.95)
+        ids_in_order = [m["id"] for m in result["memories"]]
+        assert ids_in_order[0] == m_func["id"], "m_func should rank first (exact match with query)"
+
     def test_filters_by_min_foundational(self):
-        """Filters by min_foundational=True."""
+        """Filters by min_foundational=True with semantic search."""
         from memory_palace.services.memory_service import remember, recall
 
-        remember(instance_id="test", memory_type="fact", content="Regular", foundational=False)
-        remember(instance_id="test", memory_type="core", content="Foundational", foundational=True)
+        # Both memories have similar vectors (north) but different foundational status
+        m_regular = remember(instance_id="test", memory_type="fact", content="north Regular", foundational=False)
+        m_found = remember(instance_id="test", memory_type="core", content="north Foundational", foundational=True)
 
-        result = recall(query="content", min_foundational=True, synthesize=False)
+        # Query for foundational only
+        result = recall(query="north", min_foundational=True, synthesize=False)
 
-        assert result["count"] == 1
+        assert result["count"] == 1, f"Expected 1 foundational memory, got {result['count']}"
         assert result["memories"][0]["foundational"] is True
+        assert result["memories"][0]["id"] == m_found["id"]
 
     def test_includes_graph_context_in_results(self):
-        """Includes graph context in results."""
+        """Includes graph context in results with semantic search."""
         from memory_palace.services.memory_service import remember, recall
         from memory_palace.services.graph_service import link_memories
 
-        # Create two memories and link them
-        m1 = remember(instance_id="test", memory_type="fact", content="Memory 1", subject="M1")
-        m2 = remember(instance_id="test", memory_type="fact", content="Memory 2", subject="M2")
-        link_memories(m1["id"], m2["id"], "relates_to")
+        # Create two memories with known vectors and link them
+        m1 = remember(instance_id="test", memory_type="fact", content="north Memory 1", subject="M1")
+        m2 = remember(instance_id="test", memory_type="fact", content="north Memory 2", subject="M2")
+        link_result = link_memories(m1["id"], m2["id"], "relates_to")
 
-        result = recall(query="Memory", include_graph=True, synthesize=False)
+        assert "id" in link_result, "link_memories should create an edge"
 
-        assert "graph_context" in result
+        # Query with VEC_NORTH to find both memories
+        result = recall(query="north", include_graph=True, synthesize=False)
+
+        assert result["count"] >= 2, f"Expected at least 2 memories, got {result['count']}"
+        assert "graph_context" in result, "Should include graph_context when include_graph=True"
         assert "edges" in result["graph_context"]
-        assert len(result["graph_context"]["edges"]) > 0
+        assert len(result["graph_context"]["edges"]) > 0, "Should have at least one edge"
+
+        # Verify the edge connects m1 and m2
+        edge = result["graph_context"]["edges"][0]
+        assert edge["source"] == m1["id"] or edge["source"] == m2["id"]
+        assert edge["target"] == m1["id"] or edge["target"] == m2["id"]
 
     def test_updates_access_count(self):
         """Updates access_count on retrieved memories."""
@@ -510,16 +577,34 @@ class TestRecall:
             db.close()
 
     def test_returns_raw_memories_when_synthesize_false(self):
-        """Returns raw memories when synthesize=False."""
+        """Returns raw memories when synthesize=False with full content and similarity scores."""
         from memory_palace.services.memory_service import remember, recall
 
-        remember(instance_id="test", memory_type="fact", content="Raw test")
+        # Create a memory with known vector
+        m = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="north Raw test content",
+            subject="Raw Test Memory"
+        )
 
-        result = recall(query="Raw", synthesize=False)
+        # Query with VEC_NORTH to get exact match
+        result = recall(query="north", synthesize=False)
 
-        assert "memories" in result
-        assert "summary" not in result
+        # Check structure
+        assert "memories" in result, "Should return 'memories' key when synthesize=False"
+        assert "summary" not in result, "Should NOT return 'summary' when synthesize=False"
         assert isinstance(result["memories"], list)
+        assert len(result["memories"]) > 0
+
+        # Check content of returned memory
+        returned_mem = result["memories"][0]
+        assert returned_mem["id"] == m["id"]
+        assert returned_mem["subject"] == "Raw Test Memory"
+        assert "content" in returned_mem, "Should return full content in verbose mode"
+        assert returned_mem["content"] == "north Raw test content"
+        assert "similarity_score" in returned_mem, "Should include similarity_score"
+        assert returned_mem["similarity_score"] > 0.99, "Exact match should have similarity ≈ 1.0"
 
 
 class TestGetMemoryById:
@@ -1017,3 +1102,152 @@ class TestUnlinkMemories:
 
         assert "error" in result
         assert "No edges found" in result["error"]
+
+
+class TestMultiProject:
+    """Tests for multi-project support."""
+
+    def test_remember_with_list_project(self):
+        """remember() accepts list of projects."""
+        from memory_palace.services.memory_service import remember
+        from memory_palace.database import get_session
+
+        result = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="Multi-project memory",
+            subject="Multi",
+            project=["life", "palace"]
+        )
+
+        assert "id" in result
+
+        db = get_session()
+        try:
+            memory = db.query(Memory).filter(Memory.id == result["id"]).first()
+            assert memory.projects == ["life", "palace"]
+        finally:
+            db.close()
+
+    def test_remember_normalizes_string_to_list(self):
+        """remember() normalizes string project to single-element list."""
+        from memory_palace.services.memory_service import remember
+        from memory_palace.database import get_session
+
+        result = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="Single project memory",
+            project="test-project"
+        )
+
+        db = get_session()
+        try:
+            memory = db.query(Memory).filter(Memory.id == result["id"]).first()
+            assert memory.projects == ["test-project"]
+        finally:
+            db.close()
+
+    def test_recall_single_project_matches_multi_project_memory(self):
+        """recall(project="life") finds memories that include "life" in their projects array."""
+        from memory_palace.services.memory_service import remember, recall
+
+        mem = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="This memory is in both life and palace projects.",
+            subject="Dual project",
+            project=["life", "palace"]
+        )
+
+        result = recall(query="dual project", project="life", synthesize=False)
+
+        # Should find exactly the one memory we created
+        assert result["count"] == 1
+        assert result["memories"][0]["id"] == mem["id"]
+        assert "life" in result["memories"][0]["project"]
+
+    def test_recall_list_project_matches_union(self):
+        """recall(project=["life", "palace"]) returns memories from either project."""
+        from memory_palace.services.memory_service import remember, recall
+
+        # All three memories use VEC_NORTH for consistent similarity
+        m_life = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="Life only memory north.",
+            subject="Life only",
+            project="life"
+        )
+        m_palace = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="Palace only memory north.",
+            subject="Palace only",
+            project="palace"
+        )
+        m_other = remember(
+            instance_id="test",
+            memory_type="fact",
+            content="Unrelated project north.",
+            subject="Other project",
+            project="other"
+        )
+
+        result = recall(query="north", project=["life", "palace"], synthesize=False)
+        assert result["count"] == 2, f"Expected 2 memories from life/palace, got {result['count']}"
+
+        # Verify only life and palace memories are returned
+        returned_ids = {m["id"] for m in result["memories"]}
+        assert returned_ids == {m_life["id"], m_palace["id"]}
+
+    def test_stats_explodes_multi_project(self):
+        """get_memory_stats() counts multi-project memories in each project."""
+        from memory_palace.services.memory_service import remember, get_memory_stats
+
+        remember(
+            instance_id="test",
+            memory_type="fact",
+            content="Dual membership memory.",
+            project=["alpha", "beta"]
+        )
+
+        stats = get_memory_stats()
+        # Memory should count toward BOTH projects
+        assert stats["by_project"].get("alpha", 0) >= 1
+        assert stats["by_project"].get("beta", 0) >= 1
+
+    def test_auto_link_checks_project_overlap(self):
+        """Auto-link with same_project_only uses overlap, not exact match."""
+        from memory_palace.services.memory_service import remember
+
+        with patch("memory_palace.services.memory_service.get_auto_link_config", return_value={
+            "enabled": True,
+            "link_threshold": 0.75,
+            "suggest_threshold": 0.675,
+            "max_suggestions": 10,
+            "same_project_only": True,
+            "classify_edges": False,
+        }):
+            # Memory in ["life", "palace"] with VEC_NORTH_CLOSE
+            first = remember(
+                instance_id="test",
+                memory_type="fact",
+                content="This is north_close content.",
+                subject="Similar fact",
+                project=["life", "palace"]
+            )
+
+            # Memory in ["palace", "tools"] with VEC_NORTH — overlaps on "palace", high similarity
+            second = remember(
+                instance_id="test",
+                memory_type="fact",
+                content="This is north content too.",
+                subject="Similar fact two",
+                project=["palace", "tools"],
+                auto_link=True
+            )
+
+            # Should auto-link because projects overlap on "palace" and similarity > threshold
+            assert "links_created" in second, "Should auto-link when projects overlap"
+            assert len(second["links_created"]) > 0

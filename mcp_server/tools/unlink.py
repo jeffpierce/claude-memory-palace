@@ -1,5 +1,5 @@
 """
-Unlink tool for Claude Memory Palace MCP server.
+Unlink tool for Memory Palace MCP server.
 """
 from typing import Any, Optional
 

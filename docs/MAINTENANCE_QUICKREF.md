@@ -7,7 +7,7 @@ Three new tools for palace maintenance:
 | Tool | Purpose | Default Safety |
 |------|---------|----------------|
 | `memory_audit` | Find issues | Read-only (safe) |
-| `memory_batch_archive` | Bulk archival | `dry_run=True` |
+| `memory_archive` | Bulk archival | `dry_run=True` |
 | `memory_reembed` | Regenerate embeddings | `dry_run=True` |
 
 **Key insight:** High-centrality memories (many incoming edges) are automatically protected. The graph knows what's important.
@@ -82,9 +82,9 @@ Run memory_audit with default settings
 ### Quarterly: Clean Up Old Content
 ```
 1. memory_audit (check_stale=True)
-2. memory_batch_archive (dry_run=True) - preview
+2. memory_archive (dry_run=True) - preview
 3. Review protected vs. to-archive
-4. memory_batch_archive (dry_run=False) - execute
+4. memory_archive (dry_run=False) - execute
 ```
 
 ### Annually: Upgrade Embeddings
@@ -134,7 +134,7 @@ duplicate_threshold=0.92       # Similarity threshold
 limit_per_category=20          # Results cap
 ```
 
-### memory_batch_archive
+### memory_archive
 ```
 older_than_days=180           # Age filter
 max_access_count=2            # Low-access filter

@@ -291,7 +291,7 @@ def main() -> int:
         Exit code (0 for success, 1 for error)
     """
     print("=" * 60)
-    print("Claude Memory Palace - Claude Desktop Configuration")
+    print("Memory Palace - Claude Desktop Configuration")
     print("=" * 60)
     print()
 
@@ -379,7 +379,7 @@ def main() -> int:
         print("Next steps:")
         print("1. Restart Claude Desktop for changes to take effect")
         print("2. In Claude Desktop, verify the memory-palace server is active")
-        print("3. Test by asking Claude to remember something")
+        print("3. Test by asking your AI assistant to remember something")
         print()
         print("Example test:")
         print('  User: "Remember that my favorite color is blue"')

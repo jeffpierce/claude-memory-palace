@@ -74,7 +74,8 @@ def main():
             query = query.filter(Memory.importance >= args.min_importance)
         
         if args.project:
-            query = query.filter(Memory.project == args.project)
+            from memory_palace.models import _project_contains
+            query = query.filter(_project_contains(args.project))
         
         if args.type:
             query = query.filter(Memory.memory_type == args.type)

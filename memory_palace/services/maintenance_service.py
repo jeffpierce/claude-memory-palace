@@ -1,5 +1,5 @@
 """
-Maintenance service for Claude Memory Palace.
+Maintenance service for Memory Palace.
 
 Provides health checks, bulk archival, consolidation, and re-embedding
 operations for palace maintenance.
@@ -11,7 +11,7 @@ import logging
 
 from sqlalchemy import func, or_
 
-from memory_palace.models import Memory, MemoryEdge
+from memory_palace.models import Memory, MemoryEdge, _project_contains, _projects_overlap
 from memory_palace.database import get_session
 from memory_palace.embeddings import cosine_similarity, get_embedding
 
@@ -61,7 +61,7 @@ def _find_duplicates(
     )
 
     if project:
-        query = query.filter(Memory.project == project)
+        query = query.filter(_project_contains(project))
 
     memories = query.all()
 
@@ -124,7 +124,7 @@ def _find_stale_memories(
     )
 
     if project:
-        query = query.filter(Memory.project == project)
+        query = query.filter(_project_contains(project))
 
     candidates = query.all()
 
@@ -212,7 +212,7 @@ def _find_missing_embeddings(
     )
 
     if project:
-        query = query.filter(Memory.project == project)
+        query = query.filter(_project_contains(project))
 
     return [mid for (mid,) in query.limit(limit).all()]
 
@@ -276,7 +276,7 @@ def _find_unlinked_memories(
     )
 
     if project:
-        query = query.filter(Memory.project == project)
+        query = query.filter(_project_contains(project))
 
     candidates = query.all()
     unlinked = []
@@ -306,6 +306,145 @@ def _find_unlinked_memories(
     return unlinked
 
 
+def _find_cross_project_auto_links(
+    db,
+    limit: int = 100
+) -> List[Dict[str, Any]]:
+    """
+    Find auto-linked edges that cross project boundaries.
+
+    These are relates_to edges where:
+    - edge_metadata contains "auto_linked": true
+    - source and target memories belong to different projects
+
+    Works with both old schema (project as String) and new schema (projects as array).
+
+    Args:
+        db: Database session
+        limit: Maximum findings to return
+
+    Returns:
+        List of cross-project auto-link findings
+    """
+    from sqlalchemy.orm import aliased
+
+    SourceMemory = aliased(Memory)
+    TargetMemory = aliased(Memory)
+
+    # Get all relates_to edges with their source and target memories
+    edges = db.query(
+        MemoryEdge, SourceMemory, TargetMemory
+    ).join(
+        SourceMemory, MemoryEdge.source_id == SourceMemory.id
+    ).join(
+        TargetMemory, MemoryEdge.target_id == TargetMemory.id
+    ).filter(
+        MemoryEdge.relation_type == "relates_to"
+    ).all()
+
+    findings = []
+    for edge, source_mem, target_mem in edges:
+        if len(findings) >= limit:
+            break
+
+        # Check if auto_linked in metadata
+        metadata = edge.edge_metadata or {}
+        if not metadata.get("auto_linked"):
+            continue
+
+        # Check project overlap — handle both old (string) and new (array) schema
+        source_projects = getattr(source_mem, 'projects', None) or [getattr(source_mem, 'project', 'life')]
+        target_projects = getattr(target_mem, 'projects', None) or [getattr(target_mem, 'project', 'life')]
+
+        # Normalize to lists
+        if isinstance(source_projects, str):
+            source_projects = [source_projects]
+        if isinstance(target_projects, str):
+            target_projects = [target_projects]
+
+        # Check for overlap
+        if not set(source_projects) & set(target_projects):
+            findings.append({
+                "edge_id": edge.id,
+                "source_id": edge.source_id,
+                "target_id": edge.target_id,
+                "source_subject": source_mem.subject or "(no subject)",
+                "target_subject": target_mem.subject or "(no subject)",
+                "source_projects": source_projects,
+                "target_projects": target_projects,
+                "strength": round(edge.strength, 4) if edge.strength else None,
+            })
+
+    return findings
+
+
+def cleanup_cross_project_auto_links(
+    dry_run: bool = True,
+    log_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Remove auto-linked edges that cross project boundaries.
+
+    Auto-linked edges are identified by edge_metadata.auto_linked == True.
+    Cross-project means source and target memories have no overlapping projects.
+
+    Writes a TOON-encoded log of removed edges so they can be reviewed and
+    selectively re-linked with proper typed edges.
+
+    Args:
+        dry_run: If True (default), return preview without deleting.
+        log_path: Path to write TOON log of removed edges. If None, writes to
+                  ~/.memory-palace/cleanup_cross_project_<timestamp>.toon
+
+    Returns:
+        Dict with findings count, log path, and deletion status.
+    """
+    import toons
+    from pathlib import Path
+    from datetime import datetime, timezone
+
+    db = get_session()
+    try:
+        findings = _find_cross_project_auto_links(db, limit=100000)
+
+        if dry_run:
+            return {
+                "would_remove": len(findings),
+                "findings": findings[:20],  # Preview first 20
+                "note": f"DRY RUN - {len(findings)} edges found. Set dry_run=False to execute."
+            }
+
+        if not findings:
+            return {"removed": 0, "message": "No cross-project auto-links found."}
+
+        # Determine log path
+        if log_path is None:
+            palace_dir = Path.home() / ".memory-palace"
+            palace_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            log_path = str(palace_dir / f"cleanup_cross_project_{ts}.toon")
+
+        # Write TOON log before deleting
+        with open(log_path, "w", encoding="utf-8") as f:
+            toons.dump(findings, f)
+
+        # Delete the cross-project auto-linked edges
+        edge_ids = [f["edge_id"] for f in findings]
+        removed = db.query(MemoryEdge).filter(
+            MemoryEdge.id.in_(edge_ids)
+        ).delete(synchronize_session="fetch")
+
+        db.commit()
+
+        return {
+            "removed": removed,
+            "log_path": log_path,
+            "message": f"Removed {removed} cross-project auto-linked edges. Log: {log_path}",
+        }
+    finally:
+        db.close()
+
+
 def audit_palace(
     checks: Optional[List[str]] = None,
     thresholds: Optional[Dict[str, Any]] = None,
@@ -318,7 +457,7 @@ def audit_palace(
     Args:
         checks: List of check names to run (None = all).
                 Valid: "duplicates", "stale", "orphan_edges", "missing_embeddings",
-                       "contradictions", "unlinked"
+                       "contradictions", "unlinked", "cross_project_auto_links"
         thresholds: Override thresholds, e.g. {"duplicate_similarity": 0.95,
                     "stale_days": 90, "stale_max_access": 5}
         project: Filter by project
@@ -332,7 +471,7 @@ def audit_palace(
         # Default to all checks if none specified
         if checks is None:
             checks = ["duplicates", "stale", "orphan_edges", "missing_embeddings",
-                     "contradictions", "unlinked"]
+                     "contradictions", "unlinked", "cross_project_auto_links"]
 
         # Default thresholds
         default_thresholds = {
@@ -390,6 +529,11 @@ def audit_palace(
             unlinked = _find_unlinked_memories(db, project=project, limit=limit_per_category)
             result["unlinked"] = unlinked
 
+        # Check cross-project auto-links
+        if "cross_project_auto_links" in checks:
+            cross_project = _find_cross_project_auto_links(db, limit=limit_per_category)
+            result["cross_project_auto_links"] = cross_project
+
         # Build summary
         total_issues = 0
         summary = {}
@@ -422,6 +566,11 @@ def audit_palace(
         if "unlinked" in checks:
             count = len(result.get("unlinked", []))
             summary["unlinked_found"] = count
+            total_issues += count
+
+        if "cross_project_auto_links" in checks:
+            count = len(result.get("cross_project_auto_links", []))
+            summary["cross_project_auto_links_found"] = count
             total_issues += count
 
         summary["total_issues"] = total_issues
@@ -521,7 +670,7 @@ def reembed_memories(
                 Memory.embedding.is_(None)
             )
             if project:
-                query = query.filter(Memory.project == project)
+                query = query.filter(_project_contains(project))
         elif memory_ids:
             query = db.query(Memory).filter(Memory.id.in_(memory_ids))
         elif all_memories:
@@ -534,7 +683,7 @@ def reembed_memories(
                 query = query.filter(Memory.created_at < cutoff_date)
 
             if project:
-                query = query.filter(Memory.project == project)
+                query = query.filter(_project_contains(project))
 
         memories = query.all()
 

@@ -1,10 +1,10 @@
 # Testing Maintenance Tools via MCP
 
-Since the Python test script requires database access (and may have missing dependencies like psycopg2), the easiest way to test the maintenance tools is via MCP in Claude Code.
+Since the Python test script requires database access (and may have missing dependencies like psycopg2), the easiest way to test the maintenance tools is via MCP in an MCP client like Claude Code.
 
 ## Prerequisites
 
-1. The MCP server should be running (Claude Code will start it automatically)
+1. The MCP server should be running (your MCP client will start it automatically)
 2. PostgreSQL should be running (if using postgres backend)
 3. Ollama should be running for embedding operations
 
@@ -12,7 +12,7 @@ Since the Python test script requires database access (and may have missing depe
 
 ### 1. Test memory_audit
 
-Ask Claude:
+Ask your AI:
 
 ```
 Run a memory audit. Check for duplicates, stale memories, orphan edges, missing embeddings, and contradictions. Limit results to 5 per category for readability.
@@ -35,9 +35,9 @@ Expected response format:
 }
 ```
 
-### 2. Test memory_batch_archive (dry run)
+### 2. Test memory_archive (dry run)
 
-Ask Claude:
+Ask your AI:
 
 ```
 Show me what would happen if we batch archived all memories older than 180 days with access count <= 2. Use dry run mode and enable centrality protection with threshold 5.
@@ -68,7 +68,7 @@ Expected response format:
 }
 ```
 
-### 3. Test memory_batch_archive (execute)
+### 3. Test memory_archive (execute)
 
 After reviewing the dry run results:
 
@@ -78,7 +78,7 @@ Execute the batch archive for memories older than 180 days with access count <= 
 
 ### 4. Test memory_reembed (dry run)
 
-Ask Claude:
+Ask your AI:
 
 ```
 How many memories would need re-embedding if we regenerated embeddings for all memories older than 365 days? Use dry run mode.
@@ -107,19 +107,19 @@ Here's a complete test session you can run:
 ```
 User: Run a full palace audit. Check everything, limit to 5 results per category.
 
-Claude: [Calls memory_audit tool, shows results]
+AI: [Calls memory_audit tool, shows results]
 
 User: Great. Now show me what would be archived if we cleaned up memories older than 180 days with low access (<=2). Dry run mode.
 
-Claude: [Calls memory_batch_archive with dry_run=True, shows preview]
+AI: [Calls memory_archive with dry_run=True, shows preview]
 
 User: I see 15 would be archived and 3 are protected by centrality. That looks good. How long would it take to re-embed all memories older than 1 year?
 
-Claude: [Calls memory_reembed with dry_run=True, shows estimate]
+AI: [Calls memory_reembed with dry_run=True, shows estimate]
 
 User: That's reasonable. Let's execute the batch archive for the old low-access memories. Set dry_run=False and add reason "Quarterly cleanup".
 
-Claude: [Calls memory_batch_archive with dry_run=False, executes archival]
+AI: [Calls memory_archive with dry_run=False, executes archival]
 ```
 
 ## What to Look For
@@ -215,4 +215,4 @@ Consider creating a maintenance workflow:
 3. **Annual re-embed**: After model upgrades
 4. **Ongoing**: Monitor contradictions and resolve conflicts
 
-You can script this workflow using the MCP tools from Claude Code or build a scheduled task.
+You can script this workflow using the MCP tools from your MCP client or build a scheduled task.

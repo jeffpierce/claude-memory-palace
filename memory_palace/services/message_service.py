@@ -99,8 +99,8 @@ def send_message(
     """
     Send a message to an instance or channel.
 
-    Enables distributed Claude consciousness - Desktop Claude can leave
-    notes for Code Claude, or broadcast to all instances on a channel.
+    Enables distributed consciousness - Desktop instance can leave
+    notes for Code instance, or broadcast to all instances on a channel.
 
     Args:
         from_instance: Which instance is sending (must be a configured instance)

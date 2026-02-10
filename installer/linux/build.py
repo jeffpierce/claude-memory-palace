@@ -116,7 +116,7 @@ exec $PYTHON "$SELF_DIR/app/installer/linux/run_gui.py" "$@"
     desktop.write_text('''[Desktop Entry]
 Type=Application
 Name=Memory Palace Setup
-Comment=Install Claude Memory Palace — persistent AI memory
+Comment=Install Memory Palace — persistent AI memory
 Exec=AppRun
 Icon=memory-palace
 Categories=Utility;Development;
@@ -209,7 +209,7 @@ def main():
         print("(Use WSL if on Windows)")
         sys.exit(1)
 
-    print("Claude Memory Palace — Linux AppImage Builder\n")
+    print("Memory Palace — Linux AppImage Builder\n")
     sys.exit(0 if build() else 1)
 
 

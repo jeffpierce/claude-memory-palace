@@ -1,5 +1,5 @@
 """
-Database connection and session management for Claude Memory Palace.
+Database connection and session management for Memory Palace.
 
 v3: Re-exports from database_v3 with pubsub LISTEN/NOTIFY support.
 For v2 code, see database_v2.py. For legacy SQLite code, see database_v1.py.

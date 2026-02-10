@@ -1,5 +1,5 @@
 """
-Services for Claude Memory Palace.
+Services for Memory Palace.
 
 Each service encapsulates a logical unit of functionality.
 """
@@ -29,6 +29,7 @@ from memory_palace.services.memory_service import (
     backfill_embeddings,
     get_memory_by_id,
     get_memories_by_ids,
+    get_recent_memories,
     update_memory,
     jsonl_to_toon_chunks,
     VALID_SOURCE_TYPES,
@@ -50,6 +51,7 @@ from memory_palace.services.maintenance_service import (
     audit_palace,
     batch_archive_memories,
     reembed_memories,
+    cleanup_cross_project_auto_links,
 )
 
 __all__ = [
@@ -76,6 +78,7 @@ __all__ = [
     "backfill_embeddings",
     "get_memory_by_id",
     "get_memories_by_ids",
+    "get_recent_memories",
     "update_memory",
     "jsonl_to_toon_chunks",
     "VALID_SOURCE_TYPES",
@@ -95,4 +98,5 @@ __all__ = [
     "audit_palace",
     "batch_archive_memories",
     "reembed_memories",
+    "cleanup_cross_project_auto_links",
 ]

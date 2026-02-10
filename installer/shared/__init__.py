@@ -1,1 +1,1 @@
-# Shared installer logic for Claude Memory Palace
+# Shared installer logic for Memory Palace

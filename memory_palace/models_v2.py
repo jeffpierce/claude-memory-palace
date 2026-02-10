@@ -1,5 +1,5 @@
 """
-SQLAlchemy models for Claude Memory Palace v2.
+SQLAlchemy models for Memory Palace v2.
 
 Key changes from v1:
 - Knowledge graph via memory_edges table
@@ -67,7 +67,7 @@ def _embedding_column():
 
 class Memory(Base):
     """
-    Persistent memory system for Claude instances.
+    Persistent memory system for AI instances.
 
     v2 changes:
     - project: Organize memories by project (default: "life")
@@ -270,8 +270,8 @@ class MemoryEdge(Base):
 
 class HandoffMessage(Base):
     """
-    Inter-instance communication for Claude instances.
-    
+    Inter-instance communication for AI instances.
+
     Unchanged from v1 except for type cleanup (proper Boolean, TIMESTAMPTZ).
     """
     __tablename__ = "handoff_messages"

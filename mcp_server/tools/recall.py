@@ -1,4 +1,4 @@
-"""Recall tool for Claude Memory Palace MCP server."""
+"""Recall tool for Memory Palace MCP server."""
 from typing import Any, List, Optional, Union
 
 from memory_palace.services import recall

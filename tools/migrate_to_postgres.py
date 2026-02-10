@@ -452,7 +452,7 @@ def migrate(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Migrate Claude Memory Palace from SQLite v1 to PostgreSQL v2"
+        description="Migrate Memory Palace from SQLite v1 to PostgreSQL v2"
     )
     parser.add_argument(
         "--sqlite-path",
@@ -483,7 +483,7 @@ def main():
         sys.exit(1)
     
     print("=" * 60)
-    print("Claude Memory Palace Migration: SQLite v1 → PostgreSQL v2")
+    print("Memory Palace Migration: SQLite v1 → PostgreSQL v2")
     print("=" * 60)
     print()
     

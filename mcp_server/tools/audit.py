@@ -1,4 +1,4 @@
-"""Audit tool for Claude Memory Palace MCP server."""
+"""Audit tool for Memory Palace MCP server."""
 from typing import Any, Dict, List, Optional
 
 from memory_palace.services.maintenance_service import audit_palace

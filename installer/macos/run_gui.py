@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Claude Memory Palace — macOS GUI Launcher
+Memory Palace — macOS GUI Launcher
 
 Thin wrapper that launches the cross-platform GUI installer.
 Can be bundled with py2app into a .app bundle.
@@ -16,7 +16,7 @@ from gui.app import InstallerApp
 
 
 def main():
-    app = InstallerApp(title="Claude Memory Palace Setup")
+    app = InstallerApp(title="Memory Palace Setup")
     app.run()
 
 

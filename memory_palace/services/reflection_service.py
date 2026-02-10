@@ -1,5 +1,5 @@
 """
-Reflection service for Claude Memory Palace.
+Reflection service for Memory Palace.
 
 Processes conversation transcripts and extracts memories worth keeping.
 Uses LLM for intelligent extraction with free-form memory types.
@@ -35,7 +35,7 @@ def _extract_memories_with_llm(
 
     Args:
         transcript: The transcript text to analyze
-        instance_id: Which Claude instance is doing the extraction
+        instance_id: Which instance is doing the extraction
         session_id: Optional session ID to link memories back to source
         db: Database session
         dry_run: If True, don't write to database
@@ -169,7 +169,7 @@ def reflect(
     (no fallback to garbage rule-based extraction).
 
     Args:
-        instance_id: Which Claude instance is doing the reflection
+        instance_id: Which instance is doing the reflection
         transcript_path: Path to the transcript file to analyze
         session_id: Optional session ID to link memories back to source
         dry_run: If True, only report what would be stored without writing to database

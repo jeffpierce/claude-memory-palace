@@ -1,5 +1,5 @@
 """
-SQLAlchemy models for Claude Memory Palace.
+SQLAlchemy models for Memory Palace.
 
 v3: Re-exports from models_v3 with foundational memories and pubsub messaging.
 For v2 models, see models_v2.py. For legacy SQLite models, see models_v1.py.
@@ -15,6 +15,9 @@ from memory_palace.models_v3 import (
     validate_relation_type,
     validate_relationship_type,  # Legacy alias
     HAS_PGVECTOR,
+    _normalize_projects,
+    _project_contains,
+    _projects_overlap,
 )
 
 # Backward compatibility alias
@@ -30,4 +33,7 @@ __all__ = [
     "validate_relation_type",
     "validate_relationship_type",
     "HAS_PGVECTOR",
+    "_normalize_projects",
+    "_project_contains",
+    "_projects_overlap",
 ]

@@ -3,9 +3,9 @@
 ## The Problem
 
 Currently, palace maintenance is manual and doesn't scale:
-- `memory_forget` archives one memory at a time
+- `memory_archive` archives one memory at a time
 - `memory_stats` reports counts but not problems
-- `backfill_embeddings` handles missing embeddings
+- `memory_reembed` handles missing embeddings
 - No detection of issues, no batch operations, no consolidation
 
 For a user like Santa News (daily YouTube automation), this means:
@@ -19,10 +19,10 @@ For a user like Santa News (daily YouTube automation), this means:
 ### What We Have
 | Tool | Purpose | Limitation |
 |------|---------|------------|
-| `memory_forget` | Archive single memory | Manual, one-by-one |
-| `memory_supersede` | Replace old with new | Manual, requires knowing both IDs |
+| `memory_archive` | Archive single memory | Manual, one-by-one |
+| `memory_link` (with `relation_type="supersedes"`, `archive_old=True`) | Replace old with new | Manual, requires knowing both IDs |
 | `memory_stats` | Counts and top-5 lists | Reports facts, not problems |
-| `backfill_embeddings` | Generate missing embeddings | Reactive, not proactive |
+| `memory_reembed` | Generate missing embeddings | Reactive, not proactive |
 
 ### What's Missing
 
@@ -89,10 +89,10 @@ async def memory_audit(
     """
 ```
 
-### 2. `memory_batch_archive` - Bulk Archival
+### 2. `memory_archive` - Bulk Archival
 
 ```python
-async def memory_batch_archive(
+async def memory_archive(
     # Filter criteria (all optional, combined with AND)
     older_than_days: int = None,        # Age filter
     max_access_count: int = None,       # Low-access filter
@@ -263,7 +263,7 @@ is_stale = (
 )
 ```
 
-For `memory_batch_archive`:
+For `memory_archive`:
 ```python
 # Exclude from archival if centrality protected
 if centrality_protection and memory.in_degree >= min_centrality_threshold:
@@ -283,7 +283,7 @@ For workflows generating daily ephemeral content:
 1. Use memory_type="daily_content" or "episode" for ephemeral memories
 2. Weekly: `memory_consolidate` daily → weekly summary
 3. Monthly: `memory_consolidate` weekly → monthly summary
-4. Quarterly: `memory_batch_archive` older_than_days=90, memory_type="daily_content"
+4. Quarterly: `memory_archive` older_than_days=90, memory_type="daily_content"
 ```
 
 This creates a natural compression:
@@ -305,8 +305,8 @@ Batch archive targets content memories. Identity stays forever.
 When `memory_audit` finds contradictions:
 1. Surface both memories to user/AI
 2. User decides which is authoritative
-3. `memory_supersede` new over old (if new correct)
-4. Or `memory_forget` the incorrect one
+3. `memory_link` (with `relation_type="supersedes"`, `archive_old=True`) new over old (if new correct)
+4. Or `memory_archive` the incorrect one
 
 The `contradicts` edge type is a FLAG, not a resolution. Human reviews.
 
@@ -320,7 +320,7 @@ The `contradicts` edge type is a FLAG, not a resolution. Human reviews.
 - Low risk, high visibility
 
 ### Phase 2: Batch Archive
-- `memory_batch_archive` with dry_run safety
+- `memory_archive` with dry_run safety
 - Most requested maintenance operation
 - Enables "clean up old stuff" workflows
 

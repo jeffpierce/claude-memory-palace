@@ -212,7 +212,7 @@ When you find a relevant memory and want to see what's connected:
 
 1. Use `memory_recall` to find the memory
 2. Graph context immediately shows connections
-3. No need for separate `memory_related` call
+3. No need for separate graph traversal call
 
 ### 3. Building Knowledge Clusters
 
@@ -235,7 +235,7 @@ Possible causes:
 
 If a memory has 100+ edges, the response will be large. Solutions:
 1. Reduce `graph_top_n` for recall
-2. Use `memory_graph` with depth/relation filters for more control
+2. Use `memory_get` with `traverse=True` and `relation_types` filter for more control
 3. Disable graph context if not needed for this query
 
 ### Memory IDs Don't Match

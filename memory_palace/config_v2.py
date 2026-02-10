@@ -1,5 +1,5 @@
 """
-Configuration for Claude Memory Palace v2.
+Configuration for Memory Palace v2.
 
 Supports both PostgreSQL (primary) and SQLite (legacy/migration).
 PostgreSQL is required for full 2.0 functionality (knowledge graph, native vector search).
@@ -38,7 +38,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         # reasoning or sub-agents. Useful when:
         # - No local GPU available (AWS deployment)
         # - GPU is busy (gaming, ComfyUI, etc.)
-        # - You want Claude to do the reasoning instead of local Qwen
+        # - You want the AI assistant to do the reasoning instead of local Qwen
     },
     # Auto-linking configuration (creates edges at remember() time)
     "auto_link": {
@@ -53,10 +53,16 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # MCP output format
     "toon_output": True,  # Use TOON encoding for MCP responses (saves ~30% tokens)
     # Instance configuration
-    # Instances represent different Claude contexts (e.g., "prime", "code", "desktop").
+    # Instances represent different AI contexts (e.g., "prime", "code", "desktop").
     # Configure your actual instances in ~/.memory-palace/config.json — this default
     # is only a fallback. The MEMORY_PALACE_INSTANCE_ID env var auto-adds to the list.
     "instances": ["default"],
+    # Post-send notification hook
+    # Shell command to execute after sending messages (fire-and-forget).
+    # Template variables: {to_instance}, {from_instance}, {channel}, {priority},
+    # {message_type}, {subject}, {message_id}
+    # Example: "openclaw cron wake --text \"{from_instance} sent {message_type} to {to_instance}\""
+    "notify_command": None,
 }
 
 # Preferred models for auto-detection (in order of preference)
@@ -165,6 +171,9 @@ def load_config() -> Dict[str, Any]:
         default_instance = os.environ["MEMORY_PALACE_INSTANCE_ID"]
         if default_instance not in config["instances"]:
             config["instances"].append(default_instance)
+
+    if os.environ.get("MEMORY_PALACE_NOTIFY_COMMAND"):
+        config["notify_command"] = os.environ["MEMORY_PALACE_NOTIFY_COMMAND"]
 
     _config_cache = config
     return config
@@ -384,6 +393,23 @@ def is_toon_output_enabled() -> bool:
     """
     config = load_config()
     return config.get("toon_output", True)
+
+
+def get_notify_command() -> Optional[str]:
+    """
+    Get the configured post-send notification command, or None.
+
+    This command is executed after a message is successfully sent, with
+    template variables substituted from the send parameters.
+
+    Template variables available:
+    - {to_instance}, {from_instance}, {channel}, {priority},
+      {message_type}, {subject}, {message_id}
+
+    Returns:
+        Command template string, or None if no notification configured
+    """
+    return load_config().get("notify_command")
 
 
 def ensure_data_dir() -> Path:

@@ -1,4 +1,4 @@
-"""Setup utilities for Claude Memory Palace."""
+"""Setup utilities for Memory Palace."""
 
 from .detect_gpu import detect_gpu
 from .model_recommendations import get_recommended_models

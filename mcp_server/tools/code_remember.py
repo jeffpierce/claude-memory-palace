@@ -1,4 +1,4 @@
-"""Code remember tool for Claude Memory Palace MCP server."""
+"""Code remember tool for Memory Palace MCP server."""
 from typing import Any
 
 from memory_palace.services.code_service import code_remember

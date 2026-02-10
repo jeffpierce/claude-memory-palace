@@ -1,5 +1,5 @@
 """
-Database connection and session management for Claude Memory Palace.
+Database connection and session management for Memory Palace.
 
 Database layer for Memory Palace.
 """

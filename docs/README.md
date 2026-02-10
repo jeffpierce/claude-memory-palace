@@ -1,6 +1,6 @@
-# Claude Memory Palace - Documentation
+# Memory Palace - Documentation
 
-A persistent memory system for Claude instances, enabling semantic search across conversations, facts, and insights.
+A persistent memory system for AI instances, enabling semantic search across conversations, facts, and insights with intelligent auto-linking and knowledge graph capabilities.
 
 ## Quick Start
 
@@ -75,87 +75,458 @@ Adjust paths for your system.
 
 ## Usage
 
-Once configured, Claude will have access to the following memory tools:
+Memory Palace v2.0 provides 13 MCP tools organized into five categories:
 
-### Core Tools
+### Core Memory Tools
 
 | Tool | Description |
 |------|-------------|
-| `memory_remember` | Store a new memory |
-| `memory_recall` | Search memories using semantic search (supports `synthesize` and graph context) |
-| `memory_forget` | Archive a memory (soft delete) |
-| `memory_get` | Retrieve memories by ID (supports `synthesize` and graph context) |
-| `memory_stats` | Get overview of memory system |
+| `memory_remember` | Store a new memory with automatic linking |
+| `memory_recall` | Search memories using semantic search with centrality-weighted ranking |
+| `memory_get` | Retrieve memories by ID with optional graph traversal |
+| `memory_recent` | Get the last X memories (default 20, max 200) |
+| `memory_archive` | Archive memories with protection for foundational/high-centrality nodes |
 
-#### Result Enhancement Parameters
+#### memory_remember - Store Memories
 
-Both `memory_recall` and `memory_get` support enhanced result parameters:
+Stores a new memory with intelligent auto-linking based on semantic similarity.
 
-##### Synthesis Parameter
+**Auto-linking behavior (two tiers):**
+- **Auto-linked** (≥0.75 similarity): Edges created automatically with LLM-classified types. Returned in `links_created`.
+- **Suggested** (0.675-0.75 similarity): Surfaced for human review, no edges created. Returned in `suggested_links`.
 
-- **`synthesize=false`** (default for `memory_get`): Returns raw memory objects with full content. Best when you need exact wording or are processing with a cloud AI that can handle the full context.
+**Parameters:**
 
-- **`synthesize=true`** (default for `memory_recall`): Runs memories through the local LLM (Qwen) to produce a natural language summary. Reduces token usage but takes longer (~1-2 min for large memories).
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance_id` | string | Which AI instance is storing this (e.g., "desktop", "code", "web") |
+| `memory_type` | string | Type of memory (see standard types below) |
+| `content` | string | The actual memory content |
+| `subject` | string | What/who this memory is about (optional but recommended) |
+| `keywords` | list | List of keywords for searchability (optional) |
+| `tags` | list | Freeform organizational tags (optional) |
+| `foundational` | bool | True if core/foundational (never archived, default: false) |
+| `project` | string/list | Project(s) this memory belongs to (default: "life") |
+| `source_type` | string | How created (conversation, explicit, inferred, observation) |
+| `source_context` | string | Snippet of original context (optional) |
+| `source_session_id` | string | Link to conversation session (optional) |
+| `supersedes_id` | int | If set, creates 'supersedes' edge and archives target (optional) |
+| `auto_link` | bool | Override config to enable/disable auto-linking (optional) |
 
-For `memory_get`, synthesis is skipped for single memories (pointless to summarize one thing).
+**Standard memory types:**
+- `fact` - Objective information
+- `preference` - User preferences
+- `event` - Things that happened
+- `context` - Situational context
+- `insight` - Derived understanding
+- `relationship` - Connections between things
+- `architecture` - System design information
+- `gotcha` - Things to watch out for
+- `blocker` - Blocking issues
+- `solution` - Solutions to problems
+- `workaround` - Temporary fixes
+- `design_decision` - Why something was done a certain way
 
-##### Graph Context Parameters
+Custom types are allowed - use descriptive names that fit your needs.
 
-- **`include_graph=bool`** (default `true`): Include depth-1 graph context (immediate incoming/outgoing edges) for retrieved memories. Helps understand how memories connect without needing separate graph traversal calls.
+**Example:**
+```python
+memory_remember(
+    instance_id="code",
+    memory_type="architecture",
+    content="The authentication system uses JWT tokens with 24-hour expiry",
+    subject="authentication system",
+    keywords=["jwt", "auth", "tokens"],
+    project="my-app",
+    foundational=True
+)
+```
 
-- **`graph_top_n=int`** (default `5`, only for `memory_recall`): Number of top-ranked results to fetch graph context for. Clamped to the query limit. This prevents returning massive amounts of graph data for searches with many results.
+#### memory_recall - Semantic Search
 
-**Key difference:** `memory_recall` limits graph context to top N results (performance consideration for broad searches), while `memory_get` includes graph context for ALL requested memories (intentional targeted fetches where full context is desired).
+Search memories using semantic similarity with centrality-weighted ranking.
 
-**Graph context format:**
+**Centrality-weighted ranking formula:**
+Combines semantic similarity, access frequency, and graph centrality (in-degree count) to surface the most relevant and important memories.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string | Search query (semantic when Ollama available, keyword fallback) |
+| `instance_id` | string | Filter by instance (optional) |
+| `project` | string/list | Filter by project (optional) |
+| `memory_type` | string | Filter by type, supports wildcards (e.g., "code_*") |
+| `subject` | string | Filter by subject (optional) |
+| `min_foundational` | bool | Only return foundational memories (optional) |
+| `include_archived` | bool | Include archived memories (default: false) |
+| `limit` | int | Maximum memories to return (default: 20) |
+| `detail_level` | string | "summary" or "verbose" (applies when synthesize=True) |
+| `synthesize` | bool | Use local LLM to synthesize results (default: true) |
+| `include_graph` | bool | Include graph context for top N results (default: true) |
+| `graph_top_n` | int | Number of top results to fetch graph context for (default: 5) |
+| `graph_depth` | int | How many hops to follow (1-3, default: 1) |
+
+**Returns (synthesize=True):**
 ```json
 {
-  "graph_context": {
-    "memory_id": {
-      "outgoing": [
-        {
-          "target_id": 42,
-          "target_subject": "Related Memory",
-          "relation_type": "relates_to",
-          "strength": 1.0
-        }
-      ],
-      "incoming": [
-        {
-          "source_id": 17,
-          "source_subject": "Source Memory",
-          "relation_type": "derived_from",
-          "strength": 1.0
-        }
-      ]
-    }
-  }
+  "summary": "Natural language summary of results",
+  "count": 5,
+  "search_method": "semantic",
+  "memory_ids": [42, 17, 89, 103, 56],
+  "graph_context": {"nodes": {...}, "edges": [...]}
 }
 ```
 
-### Reflection Tools
+**Returns (synthesize=False):**
+```json
+{
+  "memories": [
+    {
+      "id": 42,
+      "subject": "authentication system",
+      "content": "...",
+      "similarity_score": 0.89,
+      ...
+    }
+  ],
+  "count": 5,
+  "search_method": "semantic",
+  "graph_context": {"nodes": {...}, "edges": [...]}
+}
+```
+
+**Example:**
+```python
+# Quick natural language summary
+memory_recall(query="How does authentication work?")
+
+# Get raw memories with high similarity for detailed analysis
+memory_recall(query="authentication approach", synthesize=False, limit=10)
+
+# Search within a project
+memory_recall(query="API endpoints", project="my-app", synthesize=False)
+```
+
+#### memory_get - Retrieve by ID
+
+Retrieve one or more memories by their IDs with optional graph traversal.
+
+**Use this when:**
+- You have specific memory IDs from handoff messages (e.g., "Memory 151")
+- You need to fetch exact memories without search
+- You want to traverse the knowledge graph from known nodes
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `memory_ids` | int/list | Single memory ID or list of IDs to retrieve |
+| `detail_level` | string | "summary" or "verbose" (default: "verbose") |
+| `synthesize` | bool | Use LLM to synthesize (skipped for single memory, default: false) |
+| `include_graph` | bool | Include graph context for all memories (default: true) |
+| `graph_depth` | int | Hops to follow (1-3, default: 1, use 2 for bootstrap) |
+| `traverse` | bool | Do BFS traversal instead of context (default: false) |
+| `max_depth` | int | Max depth for BFS traverse (1-5, only if traverse=True) |
+| `direction` | string | "outgoing", "incoming", or None for both (optional) |
+| `relation_types` | list | Filter edges by type (optional) |
+| `min_strength` | float | Filter edges by minimum strength 0.0-1.0 (optional) |
+
+**Graph context vs. Traversal:**
+- `include_graph=True`: Shows immediate connections (asymmetric depth-1 neighborhood)
+- `traverse=True`: Performs breadth-first search traversal (replaces old `memory_graph` tool)
+
+**Key difference from memory_recall:**
+`memory_recall` limits graph context to top N results (performance), while `memory_get` includes graph context for ALL requested memories (intentional targeted fetches).
+
+**Example:**
+```python
+# Single memory with graph context
+memory_get(memory_ids=42)
+
+# Multiple memories, raw, with graph
+memory_get(memory_ids=[167, 168, 169], synthesize=False)
+
+# Traverse from a starting point
+memory_get(memory_ids=42, traverse=True, max_depth=2, direction="outgoing")
+
+# Bootstrap/startup with broader context
+memory_get(memory_ids=[1, 2, 3], graph_depth=2)
+```
+
+#### memory_recent - Recent Memories
+
+Get the last X memories in title-card format.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | int | Number of memories to return (default: 20, max: 200) |
+| `verbose` | bool | Include full details (default: false, title-card format) |
+| `project` | string | Filter by project (optional) |
+| `memory_type` | string | Filter by type (optional) |
+| `instance_id` | string | Filter by instance (optional) |
+| `include_archived` | bool | Include archived memories (default: false) |
+
+**Example:**
+```python
+# Get last 20 memories (title-card format)
+memory_recent()
+
+# Get last 50 with full details
+memory_recent(limit=50, verbose=True)
+
+# Recent memories for a specific project
+memory_recent(limit=30, project="my-app")
+```
+
+#### memory_archive - Archive Memories
+
+Archive memories (soft delete) with protection for foundational and high-centrality nodes.
+
+**Replaces:** `memory_forget` from v1.x
+
+**SAFETY:** `dry_run=True` by default - returns preview of what would be archived.
+
+Supports both explicit ID lists and filter-based archival. Foundational memories are always protected.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `memory_ids` | list | Explicit list of memory IDs to archive (optional) |
+| `older_than_days` | int | Archive memories older than N days (optional) |
+| `max_access_count` | int | Archive memories with access_count ≤ N (optional) |
+| `memory_type` | string | Filter by memory type (optional) |
+| `project` | string | Filter by project (optional) |
+| `centrality_protection` | bool | Protect high-centrality memories (default: true) |
+| `min_centrality_threshold` | int | In-degree count for protection (default: 5) |
+| `dry_run` | bool | Preview only (default: true) |
+| `reason` | string | Archival reason for audit trail (optional) |
+
+**Returns (dry_run=True):**
+```json
+{
+  "would_archive": 15,
+  "memories": [...],
+  "protected": 3,
+  "note": "Set dry_run=False to execute"
+}
+```
+
+**Returns (dry_run=False):**
+```json
+{
+  "archived": 15,
+  "memories": [...],
+  "protected": 3
+}
+```
+
+**Example:**
+```python
+# Preview what would be archived
+memory_archive(older_than_days=90, max_access_count=2)
+
+# Archive specific memories (still needs dry_run=False)
+memory_archive(memory_ids=[42, 17], reason="Outdated information")
+
+# Execute archival
+memory_archive(older_than_days=90, max_access_count=2, dry_run=False, reason="Cleanup")
+```
+
+### Knowledge Graph Tools
+
+Build typed relationships between memories. v2.0 simplifies the graph API to just two tools: `memory_link` and `memory_unlink`. Graph traversal is now built into `memory_get` via `traverse=True`.
 
 | Tool | Description |
 |------|-------------|
-| `memory_reflect` | Extract memories from conversation transcripts |
-| `memory_backfill_embeddings` | Generate embeddings for memories that don't have them |
-| `convert_jsonl_to_toon` | Convert JSONL transcripts to chunked TOON format |
+| `memory_link` | Create typed edges between memories |
+| `memory_unlink` | Remove edges between memories |
 
-### Code Retrieval Tools
+**Removed in v2.0:** `memory_related`, `memory_graph`, `memory_supersede`, `memory_relationship_types` (functionality integrated into `memory_get` and `memory_link`)
+
+#### memory_link - Create Edges
+
+Create a relationship edge between two memories.
+
+**Standard relationship types:**
+- `supersedes` - Newer memory replaces older (use `archive_old=True` to archive target)
+- `relates_to` - General association
+- `derived_from` - This memory came from that one
+- `contradicts` - Memories make conflicting claims
+- `exemplifies` - This is an example of that concept
+- `refines` - Adds detail/nuance to another memory
+
+Custom types are allowed - use descriptive names like `caused_by`, `blocks`, `spawned_by`, etc.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `source_id` | int | ID of the source memory |
+| `target_id` | int | ID of the target memory (edge points TO this) |
+| `relation_type` | string | Type of relationship (standard or custom) |
+| `strength` | float | Edge weight 0.0-1.0 for weighted traversal (default: 1.0) |
+| `bidirectional` | bool | Edge works in both directions (default: false) |
+| `metadata` | dict | Extra data to store with edge (optional) |
+| `created_by` | string | Instance ID creating this edge (optional) |
+| `archive_old` | bool | If true AND relation_type="supersedes", archives target (default: false) |
+
+**Replaces supersede workflow:**
+```python
+# Old way (v1.x):
+# memory_supersede(new_id=42, old_id=17)
+
+# New way (v2.0):
+memory_link(source_id=42, target_id=17, relation_type="supersedes", archive_old=True)
+```
+
+**Example:**
+```python
+# Link related memories
+memory_link(source_id=42, target_id=17, relation_type="derived_from")
+
+# Create bidirectional association
+memory_link(source_id=42, target_id=89, relation_type="relates_to", bidirectional=True)
+
+# Supersede and archive old memory
+memory_link(source_id=150, target_id=103, relation_type="supersedes", archive_old=True)
+```
+
+#### memory_unlink - Remove Edges
+
+Remove relationship edge(s) between two memories.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `source_id` | int | ID of the source memory |
+| `target_id` | int | ID of the target memory |
+| `relation_type` | string | Specific relation to remove (optional - removes ALL if None) |
+
+**Example:**
+```python
+# Remove specific edge
+memory_unlink(source_id=42, target_id=17, relation_type="derived_from")
+
+# Remove ALL edges from 42 to 17
+memory_unlink(source_id=42, target_id=17)
+```
+
+**Finding related memories in v2.0:**
+
+Use `memory_get` with `include_graph=True` (default behavior):
+
+```python
+# Get memory with its immediate connections
+result = memory_get(memory_ids=42)
+# Returns graph_context with incoming/outgoing edges
+
+# Traverse the graph (replaces old memory_graph)
+result = memory_get(memory_ids=42, traverse=True, max_depth=2)
+```
+
+### Messaging Tools
+
+Inter-instance messaging with pub/sub support. Replaces the old separate `handoff_send`, `handoff_get`, `handoff_mark_read` tools with a unified action-based interface.
+
+| Tool | Description |
+|------|-------------|
+| `message` | Unified messaging with actions: send, get, mark_read, mark_unread, subscribe, unsubscribe |
+
+#### message - Unified Messaging
+
+**Actions:**
+- `send` - Send message (requires: from_instance, to_instance, content)
+- `get` - Get messages (requires: instance_id)
+- `mark_read` - Mark read (requires: message_id, instance_id)
+- `mark_unread` - Mark unread (requires: message_id)
+- `subscribe` - Subscribe to channel (requires: instance_id, channel)
+- `unsubscribe` - Unsubscribe (requires: instance_id, channel)
+
+**Message types:**
+- `handoff` - Passing context to another instance
+- `status` - Status updates
+- `question` - Questions for another instance
+- `fyi` - For your information
+- `context` - Contextual information
+- `event` - Event notifications
+- `message` - General message (default)
+
+**Delivery:**
+- **PostgreSQL:** Uses NOTIFY for real-time delivery
+- **SQLite:** Uses polling
+
+**Parameters (vary by action):**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `action` | string | One of: send, get, mark_read, mark_unread, subscribe, unsubscribe |
+| `instance_id` | string | Instance performing the action (for get/mark_read/subscribe) |
+| `from_instance` | string | Sender (for send) |
+| `to_instance` | string | Recipient or "all" for broadcast (for send) |
+| `content` | string | Message content (for send) |
+| `message_type` | string | Type of message (default: "message") |
+| `subject` | string | Optional short summary (for send) |
+| `channel` | string | Channel name (for send/get/subscribe/unsubscribe) |
+| `priority` | int | 0-10, higher = more urgent (for send, default: 0) |
+| `unread_only` | bool | Only unread messages (for get, default: true) |
+| `limit` | int | Max messages to return (for get, default: 50) |
+| `message_id` | int | Message ID (for mark_read/mark_unread) |
+
+**Example:**
+```python
+# Send a handoff message
+message(
+    action="send",
+    from_instance="code",
+    to_instance="desktop",
+    content="Completed indexing 42 files. Check memories 167-209.",
+    message_type="handoff",
+    subject="Code indexing complete",
+    priority=5
+)
+
+# Get unread messages
+message(action="get", instance_id="desktop")
+
+# Subscribe to a channel
+message(action="subscribe", instance_id="desktop", channel="code-updates")
+
+# Broadcast to all instances
+message(
+    action="send",
+    from_instance="desktop",
+    to_instance="all",
+    content="System maintenance in 1 hour",
+    message_type="status",
+    channel="system",
+    priority=8
+)
+
+# Mark message as read
+message(action="mark_read", message_id=42, instance_id="desktop")
+```
+
+### Code Indexing Tools
 
 Index source files for natural language search over your codebase. The system creates two linked memories per file:
 
 1. **Prose memory** - LLM-generated description of the code (embedded for semantic search)
 2. **Code memory** - The actual source code (stored but NOT embedded, linked via knowledge graph)
 
-This separation is intentional: embedding raw code produces poor semantic matches, but embedding a prose description of what the code does enables queries like "how does retry logic work?" to find relevant files.
+This separation is intentional: embedding raw code produces poor semantic matches, but embedding a prose description enables queries like "how does retry logic work?" to find relevant files.
 
 | Tool | Description |
 |------|-------------|
 | `code_remember_tool` | Index a source file into the palace |
-| `code_recall_tool` | Search indexed code using natural language |
 
-**`code_remember_tool` parameters:**
+**Note:** `code_recall_tool` from v1.x has been removed. Use `memory_recall` with `project` filter instead.
+
+**Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -164,78 +535,250 @@ This separation is intentional: embedding raw code produces poor semantic matche
 | `instance_id` | string | Which instance is indexing (e.g., "code") |
 | `force` | bool | Re-index even if already indexed (default: false) |
 
-**`code_recall_tool` parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `query` | string | Natural language search query |
-| `project` | string | Filter by project (optional) |
-| `synthesize` | bool | If true, LLM answers directly. If false, returns raw matches. (default: true) |
-| `limit` | int | Maximum files to return (default: 5) |
-
 **Example workflow:**
 
 ```python
 # Index important files
-code_remember_tool(code_path="/project/src/database.py", project="my-app", instance_id="code")
-code_remember_tool(code_path="/project/src/api/endpoints.py", project="my-app", instance_id="code")
+code_remember_tool(
+    code_path="/project/src/database.py",
+    project="my-app",
+    instance_id="code"
+)
 
-# Later, query naturally
-code_recall_tool(query="How does database connection pooling work?")
-# Returns: synthesized answer with source citations
+code_remember_tool(
+    code_path="/project/src/api/endpoints.py",
+    project="my-app",
+    instance_id="code"
+)
 
-code_recall_tool(query="Show me the retry logic", synthesize=False)
-# Returns: raw {prose, code, similarity} pairs for manual analysis
+# Later, query naturally using memory_recall
+memory_recall(query="How does database connection pooling work?", project="my-app")
+
+# Get raw results for manual analysis
+memory_recall(query="Show me the retry logic", project="my-app", synthesize=False)
 ```
 
-### Handoff Tools
+### Maintenance Tools
+
+System health and maintenance operations.
 
 | Tool | Description |
 |------|-------------|
-| `handoff_send` | Send message to another Claude instance |
-| `handoff_get` | Check for messages from other instances |
-| `handoff_mark_read` | Mark a handoff message as read |
+| `memory_audit` | Health checks for the palace |
+| `memory_reembed` | Regenerate embeddings for memories |
+| `memory_stats` | Overview statistics |
 
-### Knowledge Graph Tools
+#### memory_audit - Health Checks
 
-Build typed relationships between memories. Enables graph traversal, supersession tracking, and centrality-weighted retrieval.
+Audit palace health. Checks for duplicates, stale memories, orphan edges, missing embeddings, contradictions, and cross-project auto-links.
 
-| Tool | Description |
-|------|-------------|
-| `memory_link` | Create an edge between two memories |
-| `memory_unlink` | Remove an edge between memories |
-| `memory_related` | Get memories connected to a given memory (1 hop) |
-| `memory_graph` | Traverse the knowledge graph from a starting point |
-| `memory_supersede` | Mark a new memory as replacing an old one |
-| `memory_relationship_types` | List available relationship types |
+**Parameters:**
 
-**Standard relationship types:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `checks` | list | Which checks to run (default: all) |
+| `thresholds` | dict | Override thresholds (optional) |
+| `project` | string | Filter by project (optional) |
+| `limit_per_category` | int | Max results per issue type (default: 20) |
 
-| Type | Description |
-|------|-------------|
-| `relates_to` | General association (often bidirectional) |
-| `derived_from` | This memory came from processing that one |
-| `contradicts` | Memories make conflicting claims |
-| `exemplifies` | This is an example of that concept |
-| `refines` | Adds detail/nuance to another memory |
-| `supersedes` | Newer memory replaces older (archives the old one) |
+**Valid checks:**
+- `duplicates` - Find highly similar memories (potential duplicates)
+- `stale` - Find low-access, old, low-centrality memories (foundational exempt)
+- `orphan_edges` - Find edges pointing to non-existent memories
+- `missing_embeddings` - Find memories without embeddings
+- `contradictions` - Find memories that may contradict each other
+- `cross_project_auto_links` - Find auto-links spanning projects
 
-Custom types are allowed - use descriptive names like `caused_by`, `blocks`, `spawned_by`, etc.
+**Default thresholds:**
+```json
+{
+  "duplicate_similarity": 0.95,
+  "stale_days": 90,
+  "stale_max_access": 2,
+  "stale_min_centrality": 3
+}
+```
 
 **Example:**
-
 ```python
-# Link related memories
-memory_link(source_id=42, target_id=17, relation_type="derived_from")
+# Full audit
+memory_audit()
 
-# Find what's connected
-memory_related(memory_id=42)  # Returns incoming and outgoing edges
+# Check only for duplicates and stale memories
+memory_audit(checks=["duplicates", "stale"])
 
-# Traverse the graph
-memory_graph(start_id=42, max_depth=2)  # BFS traversal up to 2 hops
+# Custom thresholds
+memory_audit(
+    checks=["duplicates"],
+    thresholds={"duplicate_similarity": 0.92}
+)
+
+# Project-specific audit
+memory_audit(project="my-app")
 ```
 
-### Example Usage
+#### memory_reembed - Regenerate Embeddings
+
+Regenerate embeddings for memories. Use `missing_only=True` to backfill memories without embeddings.
+
+**Replaces:** `memory_backfill_embeddings` from v1.x
+
+**SAFETY:** `dry_run=True` by default.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `older_than_days` | int | Re-embed embeddings older than N days (optional) |
+| `memory_ids` | list | Explicit list of memory IDs to re-embed (optional) |
+| `project` | string | Filter by project (optional) |
+| `all_memories` | bool | Re-embed everything (use with caution, default: false) |
+| `missing_only` | bool | Only embed memories with NULL embeddings - backfill mode (default: false) |
+| `batch_size` | int | Processing batch size (default: 50) |
+| `dry_run` | bool | Preview only (default: true) |
+
+**Example:**
+```python
+# Backfill missing embeddings (preview)
+memory_reembed(missing_only=True)
+
+# Execute backfill
+memory_reembed(missing_only=True, dry_run=False)
+
+# Re-embed old embeddings
+memory_reembed(older_than_days=180, dry_run=False)
+
+# Re-embed specific memories
+memory_reembed(memory_ids=[42, 17, 89], dry_run=False)
+```
+
+#### memory_stats - System Statistics
+
+Get overview statistics about the memory palace.
+
+**Returns:**
+```json
+{
+  "total_memories": 542,
+  "by_type": {"fact": 150, "preference": 42, ...},
+  "by_instance": {"code": 200, "desktop": 342},
+  "by_project": {"life": 300, "my-app": 200, ...},
+  "foundational_count": 15,
+  "archived_count": 23,
+  "most_accessed": [...],
+  "recently_added": [...]
+}
+```
+
+**Example:**
+```python
+memory_stats()
+```
+
+### Processing Tools
+
+Extract memories from conversation transcripts.
+
+| Tool | Description |
+|------|-------------|
+| `memory_reflect` | Extract memories from conversation transcripts |
+
+#### memory_reflect - Extract from Transcripts
+
+Extract memories from a conversation transcript using LLM.
+
+**Supported formats:**
+- JSONL (JSON Lines)
+- TOON (chunked encoding)
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance_id` | string | Which instance is reflecting |
+| `transcript_path` | string | Path to transcript file |
+| `session_id` | string | Optional session ID to link memories to source |
+| `dry_run` | bool | Report what would be stored without writing (default: false) |
+
+**Returns:**
+```json
+{
+  "extracted_count": 15,
+  "embedded_count": 15,
+  "types_breakdown": {"fact": 5, "preference": 3, "insight": 7}
+}
+```
+
+**Example:**
+```python
+# Extract from JSONL transcript
+memory_reflect(
+    instance_id="desktop",
+    transcript_path="/path/to/conversation.jsonl",
+    session_id="2024-01-15-morning"
+)
+
+# Preview without storing
+memory_reflect(
+    instance_id="desktop",
+    transcript_path="/path/to/conversation.toon",
+    dry_run=True
+)
+```
+
+**Note:** Converting JSONL to TOON format is done via a CLI utility, not an MCP tool:
+```bash
+python tools/dump_memories_toon.py input.jsonl output.toon
+```
+
+### Result Enhancement Features
+
+Both `memory_recall` and `memory_get` support enhanced result parameters:
+
+#### Synthesis Parameter
+
+- **`synthesize=false`**: Returns raw memory objects with full content. Best when you need exact wording or are processing with a cloud AI that can handle the full context.
+
+- **`synthesize=true`**: Runs memories through the local LLM (Qwen) to produce a natural language summary. Reduces token usage but takes longer (~1-2 min for large result sets).
+
+For `memory_get`, synthesis is skipped for single memories (pointless to summarize one thing).
+
+#### Graph Context Parameters
+
+- **`include_graph=bool`** (default `true`): Include graph context (immediate incoming/outgoing edges) for retrieved memories. Helps understand how memories connect without needing separate graph traversal calls.
+
+- **`graph_top_n=int`** (default `5`, only for `memory_recall`): Number of top-ranked results to fetch graph context for. Clamped to the query limit. Prevents returning massive amounts of graph data for searches with many results.
+
+- **`graph_depth=int`** (default `1`): How many hops to follow in graph context (1-3). Use 2 for bootstrap/startup scenarios.
+
+**Key difference:** `memory_recall` limits graph context to top N results (performance consideration for broad searches), while `memory_get` includes graph context for ALL requested memories (intentional targeted fetches where full context is desired).
+
+**Graph context format:**
+```json
+{
+  "graph_context": {
+    "nodes": {
+      "42": "authentication system",
+      "17": "JWT token handling",
+      "89": "session management"
+    },
+    "edges": [
+      {
+        "source": 42,
+        "target": 17,
+        "type": "relates_to",
+        "strength": 1.0
+      }
+    ]
+  }
+}
+```
+
+#### TOON Encoding
+
+When `synthesize=False`, results are returned in TOON (Thoughtful Object Observation Notation) encoding for efficient token usage while preserving full content fidelity.
+
+### Example Usage Patterns
 
 **Storing a memory:**
 ```
@@ -248,21 +791,22 @@ memory_graph(start_id=42, max_depth=2)  # BFS traversal up to 2 hops
 ```
 
 **Retrieving specific memories by ID:**
-```
+```python
 # Raw with graph context (default)
-memory_get(memory_ids=[167, 168, 169], synthesize=False)
-# Returns: {memories: [...], graph_context: {...}}
+memory_get(memory_ids=[167, 168, 169])
 
-# Synthesized with graph context
+# Synthesized summary with graph context
 memory_get(memory_ids=[167, 168, 169], synthesize=True)
-# Returns: {summary: "...", memory_ids: [...], graph_context: {...}}
 
 # Without graph context (faster, less context)
 memory_get(memory_ids=[167, 168, 169], include_graph=False)
+
+# Traverse from a starting point
+memory_get(memory_ids=42, traverse=True, max_depth=2)
 ```
 
 **Searching with graph context awareness:**
-```
+```python
 # Default: returns top 5 results with their graph context
 memory_recall(query="API authentication approach")
 
@@ -271,11 +815,54 @@ memory_recall(query="API authentication", limit=20, graph_top_n=10)
 
 # Disable graph context for speed
 memory_recall(query="API authentication", include_graph=False)
+
+# Get raw memories for detailed analysis
+memory_recall(query="authentication", synthesize=False)
+```
+
+**Multi-project memories:**
+```python
+# Store a memory in multiple projects
+memory_remember(
+    instance_id="code",
+    memory_type="architecture",
+    content="All services use standard retry with exponential backoff",
+    project=["my-app", "shared-patterns"],
+    foundational=True
+)
+
+# Search across projects
+memory_recall(query="retry patterns", project=["my-app", "shared-patterns"])
 ```
 
 **Reflecting on transcripts:**
 ```
 "Reflect on today's conversation and extract any important memories"
+```
+
+**Handoff between instances:**
+```python
+# Desktop → Code
+message(
+    action="send",
+    from_instance="desktop",
+    to_instance="code",
+    content="Please index the authentication module files",
+    message_type="handoff",
+    priority=5
+)
+
+# Code checks messages
+message(action="get", instance_id="code")
+
+# Code completes work and responds
+message(
+    action="send",
+    from_instance="code",
+    to_instance="desktop",
+    content="Indexed 12 files. See memories 200-212 for authentication patterns.",
+    message_type="handoff"
+)
 ```
 
 ## Configuration
@@ -289,6 +876,8 @@ memory_recall(query="API authentication", include_graph=False)
 | `MEMORY_PALACE_EMBEDDING_MODEL` | Embedding model name | Auto-detected |
 | `MEMORY_PALACE_LLM_MODEL` | LLM model for reflection | Auto-detected |
 | `MEMORY_PALACE_INSTANCE_ID` | Default instance ID | `unknown` |
+| `MEMORY_PALACE_DATABASE_URL` | Database connection URL (overrides config) | None |
+| `MEMORY_PALACE_NOTIFY_COMMAND` | Post-send notification command template | None |
 
 ### Config File
 
@@ -296,11 +885,15 @@ Configuration is loaded from `~/.memory-palace/config.json`:
 
 ```json
 {
+  "database": {
+    "type": "sqlite",
+    "url": null
+  },
   "ollama_url": "http://localhost:11434",
   "embedding_model": null,
   "llm_model": null,
-  "db_path": "~/.memory-palace/memories.db",
-  "instances": ["desktop", "code", "web"]
+  "instances": ["desktop", "code", "web"],
+  "notify_command": null
 }
 ```
 
@@ -324,7 +917,7 @@ ollama --version
 Download the required model:
 ```bash
 ollama pull nomic-embed-text
-ollama pull qwen2.5:7b
+ollama pull qwen3:1.7b
 ```
 
 ### "CUDA out of memory"
@@ -341,32 +934,39 @@ If using CPU inference, performance will be significantly slower. Consider:
 2. Using smaller models
 3. Batching operations during off-hours
 
+### Database Migration
+
+If upgrading from v1.x to v2.0, the migration will run automatically on first launch. The migration:
+- Preserves all existing memories and relationships
+- Adds new v2.0 features (multi-project support, channels, etc.)
+- Is safe and reversible (backups recommended)
+
 ## Architecture
 
 ```
 memory-palace/
-├── mcp_server/
-│   ├── server.py          # MCP server entry point
-│   └── tools/             # Tool implementations
-│       ├── remember.py
-│       ├── recall.py
-│       ├── forget.py
-│       ├── reflect.py
-│       └── ...
-├── memory_palace/
-│   ├── config.py          # Configuration handling
-│   ├── models.py          # SQLAlchemy models
-│   ├── database.py        # Database connection
-│   ├── embeddings.py      # Ollama embedding client
-│   └── llm.py             # LLM integration
-├── setup/
-│   └── first_run.py       # Setup wizard
-├── install.sh             # macOS/Linux installer
-├── install.bat            # Windows installer (cmd)
-├── install.ps1            # Windows installer (PowerShell)
-└── docs/
-    ├── README.md          # This file
-    └── models.md          # Model guide
+├── mcp_server/              # MCP server package
+│   ├── server.py            # Server entry point
+│   ├── toon_wrapper.py      # TOON response encoding
+│   └── tools/               # 13 tool implementations
+├── memory_palace/           # Core library
+│   ├── models_v3.py         # SQLAlchemy models (Memory, MemoryEdge, Message)
+│   ├── database.py          # Database connection (SQLite / PostgreSQL)
+│   ├── embeddings.py        # Ollama embedding client
+│   ├── llm.py               # LLM integration (synthesis, classification)
+│   ├── config_v2.py         # Configuration with auto-link settings
+│   ├── services/            # Business logic layer
+│   │   ├── memory_service.py      # remember, recall, archive, stats
+│   │   ├── graph_service.py       # link, unlink, traverse
+│   │   ├── message_service.py     # pub/sub messaging
+│   │   ├── maintenance_service.py # audit, reembed, cleanup
+│   │   ├── code_service.py        # code indexing + retrieval
+│   │   └── reflection_service.py  # transcript extraction
+│   └── migrations/          # Schema migration scripts
+├── setup/                   # Setup wizard
+├── extensions/              # Optional extensions (Moltbook gateway, TOON converter)
+├── docs/                    # Documentation
+└── tests/                   # Test suite
 ```
 
 ## Support

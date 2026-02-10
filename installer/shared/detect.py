@@ -1,5 +1,5 @@
 """
-Platform and dependency detection for Claude Memory Palace installer.
+Platform and dependency detection for Memory Palace installer.
 
 Detects: OS, WSL, Python, Ollama, GPU capabilities, installed AI clients.
 """

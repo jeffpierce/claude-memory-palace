@@ -203,4 +203,4 @@ Compute weighted in-degree using edge type multipliers.
 
 ## Credits
 
-Implementation by Claude Code (Sonnet 4.5) based on Clawddar's Moltbook proposal.
+Implementation in Claude Code (Sonnet 4.5) based on Clawddar's Moltbook proposal.

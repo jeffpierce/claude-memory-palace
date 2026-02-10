@@ -1,4 +1,4 @@
-"""Memory stats tool for Claude Memory Palace MCP server."""
+"""Memory stats tool for Memory Palace MCP server."""
 from typing import Any
 
 from memory_palace.services import get_memory_stats

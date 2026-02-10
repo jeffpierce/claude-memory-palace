@@ -1,219 +1,330 @@
-# Memory Palace 2.0 Migration Plan
+# Migrating to Memory Palace 2.0
 
-## Overview
+This guide walks you through upgrading from Memory Palace 1.x to 2.0. The migration changes the database schema, replaces several tools, and adds new features. Your existing memories are preserved.
 
-Major version bump: SQLite → PostgreSQL with pgvector, plus knowledge graph support.
+## Before You Start
 
-**Not backwards compatible.** Requires data migration.
+**Back up your database.** The migration modifies tables in place.
 
-## Goals
+- **SQLite:** Copy `~/.memory-palace/memories.db` somewhere safe
+- **PostgreSQL:** Run `pg_dump memory_palace > backup.sql`
 
-1. **PostgreSQL with pgvector** - Native vector operations, proper concurrent access
-2. **Knowledge graph** - Relational edges between memories
-3. **Project scoping** - Memories organized by project (default: "life")
-4. **Tags** - Freeform organizational tags (separate from keywords)
-5. **Schema cleanup** - Proper types (arrays, booleans, vectors)
+Check your current version:
 
-## Current Schema (1.x - SQLite)
-
-```python
-class Memory:
-    id = Integer, PK
-    created_at = DateTime
-    updated_at = DateTime
-    instance_id = String(50)
-    memory_type = String(50)
-    subject = String(255)
-    content = Text
-    keywords = JSON  # stored as JSON list
-    importance = Integer
-    source_type = String(50)
-    source_context = Text
-    source_session_id = String(100)
-    embedding = JSON  # stored as JSON list of floats
-    last_accessed_at = DateTime
-    access_count = Integer
-    expires_at = DateTime
-    is_archived = Integer  # SQLite bool workaround
-
-class HandoffMessage:
-    id = Integer, PK
-    created_at = DateTime
-    from_instance = String(50)
-    to_instance = String(50)
-    message_type = String(50)
-    subject = String(255)
-    content = Text
-    read_at = DateTime
-    read_by = String(50)
+```bash
+pip show memory-palace
 ```
 
-## Target Schema (2.0 - PostgreSQL)
+If the version is `1.x`, you're in the right place.
 
-```sql
--- Core memories table
-CREATE TABLE memories (
-    id SERIAL PRIMARY KEY,
-    instance_id TEXT NOT NULL,
-    project TEXT NOT NULL DEFAULT 'life',
-    memory_type TEXT NOT NULL,
-    subject TEXT,
-    content TEXT NOT NULL,
-    keywords TEXT[],
-    tags TEXT[],
-    importance INTEGER DEFAULT 5 CHECK (importance BETWEEN 1 AND 10),
-    embedding vector(768),  -- nomic-embed-text dimension (fits HNSW index limits)
-    source_type TEXT,
-    source_context TEXT,
-    source_session_id TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    last_accessed_at TIMESTAMPTZ,
-    access_count INTEGER DEFAULT 0,
-    expires_at TIMESTAMPTZ,
-    is_archived BOOLEAN DEFAULT false
-);
+## What Changed
 
--- Knowledge graph edges
-CREATE TABLE memory_edges (
-    id SERIAL PRIMARY KEY,
-    source_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-    target_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-    relationship TEXT NOT NULL,
-    strength FLOAT DEFAULT 1.0 CHECK (strength BETWEEN 0 AND 1),
-    bidirectional BOOLEAN DEFAULT false,
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT now(),
-    created_by TEXT,
-    
-    CONSTRAINT no_self_loops CHECK (source_id != target_id),
-    UNIQUE(source_id, target_id, relationship)
-);
+### Schema
 
--- Handoff messages (mostly unchanged)
-CREATE TABLE handoff_messages (
-    id SERIAL PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    from_instance TEXT NOT NULL,
-    to_instance TEXT NOT NULL,
-    message_type TEXT NOT NULL,
-    subject TEXT,
-    content TEXT NOT NULL,
-    read_at TIMESTAMPTZ,
-    read_by TEXT
-);
+| 1.x | 2.0 | Notes |
+|-----|-----|-------|
+| `importance` (Integer 1-10) | `foundational` (Boolean) | Memories with importance >= 8 become foundational |
+| `handoff_messages` table | `messages` table | Renamed, plus pubsub columns added |
+| No knowledge graph | `memory_edges` table | Typed, weighted, directional edges between memories |
+| `project` (single string) | `projects` (array) | Memories can belong to multiple projects |
+| No `tags` column | `tags` (array) | Freeform organizational tags |
 
--- Indexes
-CREATE INDEX idx_memories_instance ON memories(instance_id);
-CREATE INDEX idx_memories_instance_project ON memories(instance_id, project);
-CREATE INDEX idx_memories_project ON memories(project);
-CREATE INDEX idx_memories_type ON memories(memory_type);
-CREATE INDEX idx_memories_importance ON memories(importance DESC);
-CREATE INDEX idx_memories_created ON memories(created_at DESC);
-CREATE INDEX idx_memories_embedding ON memories USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX idx_memories_keywords ON memories USING gin(keywords);
-CREATE INDEX idx_memories_tags ON memories USING gin(tags);
+### Tools
 
-CREATE INDEX idx_edges_source ON memory_edges(source_id);
-CREATE INDEX idx_edges_target ON memory_edges(target_id);
-CREATE INDEX idx_edges_relationship ON memory_edges(relationship);
-CREATE INDEX idx_edges_source_rel ON memory_edges(source_id, relationship);
+Several tools were consolidated or replaced. If you reference tool names in agent prompts or system instructions, update them.
 
-CREATE INDEX idx_handoff_to ON handoff_messages(to_instance);
-CREATE INDEX idx_handoff_from ON handoff_messages(from_instance);
-CREATE INDEX idx_handoff_unread ON handoff_messages(to_instance) WHERE read_at IS NULL;
-```
+**Replaced tools:**
 
-## Relationship Types
+| 1.x Tool | 2.0 Replacement | Migration Notes |
+|----------|-----------------|-----------------|
+| `memory_forget` | `memory_archive` | Now has `dry_run=True` safety default |
+| `memory_batch_archive` | `memory_archive` | Unified into single tool with filter-based archival |
+| `memory_supersede` | `memory_link` | Use `relation_type="supersedes"` and `archive_old=True` |
+| `memory_graph` | `memory_get` | Use `traverse=True` for BFS graph traversal |
+| `memory_related` | `memory_get` | Graph context is now automatic on all retrievals |
+| `handoff_send` | `message` | Use `action="send"` |
+| `handoff_get` | `message` | Use `action="get"` |
+| `handoff_mark_read` | `message` | Use `action="mark_read"` |
 
-Supported edge relationships:
-- `supersedes` - Newer memory replaces older (directional)
-- `relates_to` - General association (often bidirectional)
-- `derived_from` - Memory came from processing another (directional)
-- `contradicts` - Memories are in tension (bidirectional)
-- `exemplifies` - Example of a concept (directional)
-- `refines` - Adds detail/nuance (directional)
-
-## New MCP Tools
+**New tools (no 1.x equivalent):**
 
 | Tool | Description |
 |------|-------------|
-| `memory_link` | Create relationship between memories |
-| `memory_unlink` | Remove relationship |
-| `memory_related` | Get memories within N hops |
-| `memory_supersede` | Create supersedes edge + optionally archive old |
-| `memory_graph` | Return subgraph around a memory |
+| `memory_recent` | Get the last N memories in title-card format |
+| `memory_link` | Create typed, weighted edges between memories |
+| `memory_unlink` | Remove edges |
+| `code_remember_tool` | Index source files for natural language code search |
+| `memory_audit` | Health checks: duplicates, stale memories, orphan edges |
+| `memory_reembed` | Regenerate embeddings (backfill, refresh, model change) |
+| `memory_reflect` | Extract memories from conversation transcripts |
+
+**Changed tools:**
+
+| Tool | What Changed |
+|------|-------------|
+| `memory_remember` | Added `foundational`, `tags`, `auto_link`, and `project` now accepts a list |
+| `memory_recall` | Added centrality-weighted ranking and automatic graph context |
+| `memory_get` | Added graph traversal (`traverse`), graph context (`include_graph`), multi-ID fetch |
+| `memory_archive` | Added `dry_run` safety, filter-based archival, centrality protection |
+| `memory_stats` | Enhanced with per-project breakdown, explodes multi-project counts |
+
+### Configuration
+
+The config file at `~/.memory-palace/config.json` has structural changes:
+
+**1.x config:**
+```json
+{
+  "db_path": "~/.memory-palace/memories.db",
+  "ollama_url": "http://localhost:11434",
+  "embedding_model": "nomic-embed-text",
+  "llm_model": "llama3.2",
+  "instances": ["desktop", "code"]
+}
+```
+
+**2.0 config:**
+```json
+{
+  "database": {
+    "type": "sqlite",
+    "url": null
+  },
+  "ollama_url": "http://localhost:11434",
+  "embedding_model": null,
+  "llm_model": null,
+  "synthesis": {
+    "enabled": true
+  },
+  "auto_link": {
+    "enabled": true,
+    "link_threshold": 0.75,
+    "suggest_threshold": 0.675
+  },
+  "toon_output": true,
+  "instances": ["desktop", "code"],
+  "notify_command": null
+}
+```
+
+Key differences:
+
+- `db_path` is gone. Use `database.type` (`"sqlite"` or `"postgres"`) and `database.url` instead. When `url` is null, defaults are used (`~/.memory-palace/memories.db` for SQLite, `localhost:5432/memory_palace` for PostgreSQL).
+- `embedding_model` and `llm_model` default to `null` for auto-detection. The setup wizard picks the best models for your hardware. You can still hardcode them.
+- `synthesis.enabled` controls whether the local LLM synthesizes recall results. Set to `false` if you want your AI assistant to handle synthesis instead, or if you're running without a GPU.
+- `auto_link` configures automatic edge creation when storing new memories.
+- `toon_output` enables token-efficient TOON encoding for MCP responses.
+- `notify_command` is an optional shell command template executed after sending messages.
 
 ## Migration Steps
 
-### Phase 1: Infrastructure
-- [ ] Add psycopg2/asyncpg to dependencies
-- [ ] Add pgvector to dependencies  
-- [ ] Update config to support postgres connection string
-- [ ] Create database.py abstraction that supports both SQLite and Postgres
-- [ ] Add Alembic for migrations (or raw SQL migration scripts)
+### Step 1: Update the Code
 
-### Phase 2: Schema
-- [ ] Create new SQLAlchemy models for Postgres
-- [ ] Create memory_edges model
-- [ ] Add project and tags columns
-- [ ] Update embedding to use pgvector type
+```bash
+cd memory-palace
+git pull
+pip install -e .
+```
 
-### Phase 3: Migration Script
-- [ ] Export SQLite data to intermediate format (JSON/CSV)
-- [ ] Transform data (keywords JSON → array, embedding JSON → vector, etc.)
-- [ ] Backfill project column (default 'life', infer where possible)
-- [ ] Import to Postgres
-- [ ] Verify counts and spot-check data
+Or if installing from a release:
 
-### Phase 4: Tool Updates
-- [ ] Update recall.py for pgvector similarity search
-- [ ] Update remember.py for new schema
-- [ ] Implement memory_link, memory_unlink
-- [ ] Implement memory_related (graph traversal)
-- [ ] Implement memory_supersede
-- [ ] Implement memory_graph
-- [ ] Update get_memory.py for new fields
+```bash
+pip install --upgrade memory-palace
+```
 
-### Phase 5: Testing
-- [ ] Unit tests for new tools
-- [ ] Integration test for full workflow
-- [ ] Performance test for vector search
-- [ ] Performance test for graph traversal
+### Step 2: Run the Setup Wizard
 
-### Phase 6: Documentation
-- [ ] Update README
-- [ ] Update tool documentation
-- [ ] Add Postgres setup instructions
-- [ ] Document migration process for existing users
+The wizard detects your GPU and recommends models:
 
-## Configuration Changes
+```bash
+python -m setup.first_run
+```
+
+This creates or updates `~/.memory-palace/config.json` with the new structure. If you have an existing config, the wizard merges your settings — it won't overwrite values you've already set.
+
+### Step 3: Run Schema Migrations
+
+Two migrations run in sequence. Both are idempotent — safe to run multiple times.
+
+**Migration 1: Core schema (v2 → v3)**
+
+Adds `foundational` column, removes `importance`, renames `handoff_messages` to `messages`, adds pubsub columns.
+
+```bash
+memory-palace-migrate
+```
+
+Or with an explicit database URL:
+
+```bash
+memory-palace-migrate --database-url "sqlite:///path/to/memories.db"
+memory-palace-migrate --database-url "postgresql://user:pass@localhost:5432/memory_palace"
+```
+
+What this does:
+1. Adds `foundational` column to `memories`
+2. Sets `foundational = true` for all memories where `importance >= 8`
+3. Drops the `importance` column
+4. Renames `handoff_messages` → `messages`
+5. Adds pubsub columns: `channel`, `delivery_status`, `delivered_at`, `expires_at`, `priority`
+6. Creates new indexes
+
+**Migration 2: Multi-project support (v3 → v3.1)**
+
+Converts the single `project` string to a `projects` array.
+
+```bash
+memory-palace-migrate-v3-1
+```
+
+What this does:
+1. Adds `projects` column (ARRAY on PostgreSQL, JSON on SQLite)
+2. Populates `projects` from existing `project` values: `"life"` → `["life"]`
+3. Drops the old `project` column
+4. Creates new indexes
+
+### Step 4: Update Your Config
+
+If you still have a 1.x style config, update it:
+
+```bash
+# Edit ~/.memory-palace/config.json
+```
+
+Replace `"db_path": "..."` with the `database` object. See the config comparison above.
+
+Or just delete your config and re-run the setup wizard — it'll rebuild it:
+
+```bash
+rm ~/.memory-palace/config.json
+python -m setup.first_run
+```
+
+### Step 5: Re-embed (Optional but Recommended)
+
+If you're changing embedding models (e.g., from a 1.x model to the auto-detected recommendation), re-embed your memories:
+
+```bash
+# Preview what would be re-embedded
+# (via MCP tool — run from your AI assistant)
+memory_reembed(all_memories=True, dry_run=True)
+
+# Execute
+memory_reembed(all_memories=True, dry_run=False)
+```
+
+If you're keeping the same embedding model, you can skip this. Existing embeddings remain valid.
+
+### Step 6: Verify
+
+From your AI assistant, run:
+
+```
+memory_stats()
+```
+
+Check that:
+- Memory count matches what you had before migration
+- Projects show correctly (each memory should be in at least one project)
+- No unexpected archived memories
+
+Run an audit to catch any issues:
+
+```
+memory_audit()
+```
+
+This checks for duplicates, stale memories, orphan edges, missing embeddings, and contradictions.
+
+## Upgrading to PostgreSQL (Optional)
+
+2.0 supports both SQLite and PostgreSQL. SQLite works fine for personal use. PostgreSQL adds native vector search (pgvector), concurrent access, and partial indexes.
+
+### Prerequisites
+
+1. Install PostgreSQL and pgvector
+2. Create the database: `createdb memory_palace`
+3. Enable pgvector: `psql memory_palace -c "CREATE EXTENSION vector;"`
+
+### Create Target Tables
+
+Start the MCP server once with your PostgreSQL config — it creates tables automatically on first run:
 
 ```json
 {
   "database": {
-    "type": "postgres",  // or "sqlite" for legacy
-    "url": "postgresql://user:pass@localhost:5432/memory_palace"
-  },
-  "ollama_url": "http://localhost:11434",
-  "embedding_model": "sfr-embedding-mistral:f16",
-  "llm_model": "qwen3:14b",
-  "instances": ["desktop", "code", "clawdbot"]
+    "type": "postgres",
+    "url": "postgresql://localhost:5432/memory_palace"
+  }
 }
 ```
 
-## Decisions Made
+### Migrate Data
 
-1. **Embedding model** - Using `nomic-embed-text` (768d) instead of sfr-embedding-mistral (4096d)
-   - Fits pgvector 0.6.0 HNSW index limit (2000d max)
-   - Runs efficiently on CPU for AWS deployment
-   - Smaller model = faster embeddings, less memory
-2. **SQLite support** - Migration tool only; 2.0 requires PostgreSQL
-3. **Migration approach** - Raw SQL migration script (no Alembic needed for one-time migration)
-4. **Connection pooling** - SQLAlchemy QueuePool (built-in), PgBouncer optional for high concurrency
+Use the built-in migration tool:
 
-## Notes
+```bash
+# Preview what would be migrated
+memory-palace-sqlite-to-pg --dry-run
 
-- Branch: `2.0`
-- This is a breaking change - existing SQLite databases need explicit migration
-- Consider providing a migration CLI command: `memory-palace migrate --from-sqlite`
+# Run the migration
+memory-palace-sqlite-to-pg \
+  --source "sqlite:///~/.memory-palace/memories.db" \
+  --target "postgresql://localhost:5432/memory_palace"
+```
+
+If `--source` and `--target` are omitted, the tool uses your config defaults. If the target already has data, use `--force` to proceed (existing rows are skipped via `ON CONFLICT DO NOTHING`).
+
+The tool converts all data types automatically:
+- JSON text embeddings → pgvector Vector
+- JSON text arrays (keywords, tags, projects) → PostgreSQL ARRAY
+- Integer booleans (0/1) → PostgreSQL BOOLEAN
+- JSON metadata → JSONB
+
+### Verify
+
+The migration tool prints a verification summary comparing row counts. You can also run `memory_stats()` and `memory_audit()` from your AI assistant to confirm everything transferred cleanly.
+
+## Updating Agent Prompts
+
+If your agent system prompts or persona files reference specific tool names, update them:
+
+```
+# Before (1.x)
+Use handoff_send to send messages to other instances.
+Use memory_forget to archive old memories.
+Use memory_supersede to replace outdated memories.
+
+# After (2.0)
+Use message(action="send") to send messages to other instances.
+Use memory_archive to archive old memories (dry_run=True by default).
+Use memory_link(relation_type="supersedes", archive_old=True) to replace outdated memories.
+```
+
+The `project` parameter still accepts a single string for backward compatibility. To use multi-project, pass a list: `project=["life", "my-project"]`.
+
+## Troubleshooting
+
+**"no such table: memories"**
+
+The migration expects existing tables. If you have a fresh database, just start the MCP server — it creates tables from the 2.0 schema automatically.
+
+**"column importance does not exist"**
+
+Migration 1 already ran. This is safe to ignore — the migration is idempotent.
+
+**"column project does not exist"**
+
+Migration 2 already ran. Same as above.
+
+**"Both handoff_messages and messages tables exist"**
+
+This happens if the MCP server created the new `messages` table before you ran the migration. The migration handles this — it merges data from `handoff_messages` into `messages` and drops the old table.
+
+**SQLite: "Cannot drop column"**
+
+SQLite versions before 3.35 don't support `ALTER TABLE DROP COLUMN`. The migration detects your SQLite version and skips the drop if unsupported. The old column remains in the table but is harmless — the ORM ignores unmapped columns.
+
+**Embeddings not working after migration**
+
+If you changed embedding models, existing embeddings are incompatible. Run `memory_reembed(all_memories=True, dry_run=False)` to regenerate them with the new model.

@@ -213,9 +213,9 @@ if command -v nvidia-smi &> /dev/null; then
 
             # Recommendations based on VRAM
             if [ "$GPU_VRAM_MB" -ge 16000 ]; then
-                info "Excellent! You can run large embedding models (SFR-Embedding-Mistral F16)"
+                info "Excellent! You can run the largest recommended models"
             elif [ "$GPU_VRAM_MB" -ge 8000 ]; then
-                info "Good. You can run medium embedding models (nomic-embed-text)"
+                info "Good. You can run all recommended models"
             else
                 warning "Limited VRAM. Consider using smaller models or CPU inference."
             fi
@@ -286,15 +286,15 @@ fi
 # =============================================================================
 header "First-Time Setup"
 
-SETUP_SCRIPT="$SCRIPT_DIR/setup/first_time_setup.py"
+SETUP_SCRIPT="$SCRIPT_DIR/setup/first_run.py"
 
 if [ -f "$SETUP_SCRIPT" ]; then
     info "Found first-time setup script"
     echo ""
-    echo -e "${YELLOW}First-time setup will:${NC}"
-    echo "  - Create configuration directory (~/.memory-palace/)"
-    echo "  - Initialize the SQLite database"
-    echo "  - Pull required Ollama models (if Ollama is running)"
+    echo -e "${YELLOW}The setup wizard will:${NC}"
+    echo "  - Detect your GPU"
+    echo "  - Recommend models based on your hardware"
+    echo "  - Download recommended Ollama models"
     echo ""
 
     if [ -n "$PYTHON_CMD" ] && ask_permission "Run first-time setup?"; then
@@ -335,8 +335,8 @@ fi
 echo ""
 echo -e "${CYAN}Next steps:${NC}"
 echo "  1. Ensure Ollama is running: ollama serve"
-echo "  2. Pull embedding model: ollama pull sfr-embedding-mistral:f16"
-echo "  3. Configure Claude Code to use the MCP server"
+echo "  2. Run setup wizard: python -m setup.first_run"
+echo "  3. Configure your AI client to use the MCP server (see docs/README.md)"
 echo ""
 echo "Documentation: $SCRIPT_DIR/docs/"
 echo ""

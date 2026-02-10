@@ -1,5 +1,5 @@
-"""Remember tool for Claude Memory Palace MCP server."""
-from typing import Any, List, Optional
+"""Remember tool for Memory Palace MCP server."""
+from typing import Any, List, Optional, Union
 
 from memory_palace.services import remember
 from mcp_server.toon_wrapper import toon_response
@@ -18,7 +18,7 @@ def register_remember(mcp):
         keywords: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
         foundational: bool = False,
-        project: str = "life",
+        project: Union[str, List[str]] = "life",
         source_type: str = "explicit",
         source_context: Optional[str] = None,
         source_session_id: Optional[str] = None,
@@ -37,14 +37,14 @@ def register_remember(mcp):
         For explicit supersession or other typed relationships, use supersedes_id or memory_link.
 
         Args:
-            instance_id: Which Claude instance is storing this (e.g., "desktop", "code", "web")
+            instance_id: Which instance is storing this (e.g., "desktop", "code", "web")
             memory_type: Type of memory (open-ended - use existing types or create new ones like: fact, preference, event, context, insight, relationship, architecture, gotcha, blocker, solution, workaround, design_decision)
             content: The actual memory content
             subject: What/who this memory is about (optional but recommended)
             keywords: List of keywords for searchability
             tags: Freeform organizational tags (separate from keywords)
             foundational: True if this is a foundational/core memory that should never be archived (default False)
-            project: Project this memory belongs to (default "life" for non-project memories)
+            project: Project this memory belongs to. Can be a string (single project) or list of strings (multi-project). Default "life".
             source_type: How this memory was created (conversation, explicit, inferred, observation)
             source_context: Snippet of original context
             source_session_id: Link back to conversation session

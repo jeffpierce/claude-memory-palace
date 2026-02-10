@@ -1,5 +1,5 @@
 """
-Configuration for Claude Memory Palace.
+Configuration for Memory Palace.
 
 v2: Re-exports from config_v2 for PostgreSQL + pgvector support.
 For legacy SQLite config, see config_v1.py.

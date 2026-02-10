@@ -1,14 +1,15 @@
 """
-MCP Tools for Claude Memory Palace v2.0.
+MCP Tools for Memory Palace v2.0.
 
 Each tool is in its own module for maintainability.
-This module registers the 12 v2.0 tools (down from 25 in v1.0).
+This module registers the 13 v2.0 tools (down from 25 in v1.0).
 """
 
 # Core memory operations
 from .remember import register_remember
 from .recall import register_recall
 from .get_memory import register_get_memory
+from .recent import register_recent
 from .archive import register_archive
 
 # Knowledge graph
@@ -36,6 +37,7 @@ def register_all_tools(mcp):
     register_remember(mcp)
     register_recall(mcp)
     register_get_memory(mcp)
+    register_recent(mcp)
     register_archive(mcp)
 
     # Knowledge graph

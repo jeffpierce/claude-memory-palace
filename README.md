@@ -1,147 +1,188 @@
 # Memory Palace
 
-Persistent semantic memory for Claude instances. Store facts, decisions, insights, and context across conversations. Search by meaning, not just keywords.
+Persistent semantic memory for AI agents. Store facts, decisions, insights, and context across conversations. Search by meaning, not just keywords. Build a knowledge graph of connected memories. Share across models, instances, and providers.
 
-## Features
+## The Problem
 
-- **Semantic Search** - Find memories by meaning using local embedding models
-- **Memory Types** - Organize memories as facts, decisions, architecture, gotchas, solutions, and more
-- **Transcript Reflection** - Automatically extract memories from conversation logs
-- **Multi-Instance Support** - Share memories across Claude Desktop, Claude Code, and web
-- **Local Processing** - All embeddings and extraction run locally via Ollama
-- **MCP Integration** - Works natively with Claude Desktop's MCP protocol
+Every AI session starts as a blank slate. Context windows are finite. Sessions end, knowledge dies.
 
-## Installation
+Current solutions are all vendor-locked: ChatGPT's memory only works with OpenAI. Anthropic's projects only work with Claude. Switch providers and you start over. Your accumulated context — decisions, preferences, project history — belongs to the vendor, not to you.
 
-See [docs/README.md](docs/README.md) for detailed installation instructions.
+Meanwhile, the industry races to build bigger context windows. 128K. 200K. 1M tokens. But you don't solve human amnesia by giving someone a bigger whiteboard. Memory doesn't belong inside the model — it belongs alongside it.
 
-**Quick start:**
+Memory Palace is a persistent semantic memory layer that any MCP-compatible AI can access. It separates memory from the model, the same way databases separated data from applications decades ago. The context window becomes working memory. Memory Palace is long-term storage. That's how actual brains work.
+
+## Quick Start
 
 ```bash
-# Clone repository
+# Clone and install
 git clone https://github.com/jeffpierce/memory-palace.git
 cd memory-palace
-
-# Install (choose one method)
-pip install -e .                    # Editable install from pyproject.toml
-# OR use the installer scripts:
-# Windows: install.bat or install.ps1
-# macOS/Linux: ./install.sh
+pip install -e .
 
 # Run setup wizard (detects GPU, downloads models)
 python -m setup.first_run
 ```
 
+Platform-specific installers are also available: `install.bat` / `install.ps1` (Windows), `./install.sh` (macOS/Linux).
+
+See [docs/README.md](docs/README.md) for detailed installation and configuration instructions.
+
 ## Requirements
 
 - Python 3.10+
-- Ollama (https://ollama.ai)
-- NVIDIA GPU with 4GB+ VRAM (recommended)
+- [Ollama](https://ollama.ai) (local model serving)
+- NVIDIA GPU with 4GB+ VRAM (recommended, not required)
 
 ## Model Selection
 
-Claude Memory Palace automatically selects models based on your available VRAM:
+Models are auto-detected by the setup wizard. Defaults are chosen to run everywhere:
 
 | VRAM | Embedding | LLM | Quality |
 |------|-----------|-----|---------|
-| 4-6GB | nomic-embed-text | qwen2.5:7b | Good |
-| 8-12GB | snowflake-arctic-embed | qwen3:8b | Better |
-| 16GB+ | sfr-embedding-mistral | qwen3:14b | Best |
+| Any (CPU ok) | nomic-embed-text | qwen3:1.7b | Good — runs on anything |
+| 6-8GB | nomic-embed-text | qwen3:8b | Better reasoning |
+| 12GB+ | snowflake-arctic-embed | qwen3:14b | Best extraction quality |
 
-See [docs/models.md](docs/models.md) for detailed model information.
+See [docs/models.md](docs/models.md) for the full model guide with VRAM budgets and upgrade paths.
 
-## Usage
+## Features
 
-Once configured with Claude Desktop, use natural language:
+- **Semantic Search** — Find memories by meaning using local embedding models via Ollama
+- **Knowledge Graph** — Typed, weighted, directional edges between memories with automatic graph context in retrieval
+- **Centrality-Weighted Ranking** — Retrieval scores combine semantic similarity, access frequency, and graph centrality
+- **Auto-Linking** — New memories automatically link to similar existing ones (configurable thresholds)
+- **Multi-Project Support** — Memories can belong to multiple projects simultaneously
+- **Foundational Memories** — Core memories protected from archival and decay
+- **Code Indexing** — Index source files as prose descriptions for natural language code search
+- **Inter-Instance Messaging** — Unified pub/sub messaging between AI instances with channels and priorities
+- **Transcript Reflection** — Automatically extract memories from conversation logs
+- **Multi-Backend** — SQLite for personal use, PostgreSQL + pgvector for teams
+- **Local Processing** — All embeddings, extraction, and synthesis run locally via Ollama
+- **MCP Integration** — Works natively with any MCP-compatible client (Claude Desktop, Claude Code, etc.)
+- **TOON Encoding** — Token-efficient structured responses that reduce context window usage
 
-```
-"Remember that the database migration requires downtime"
-"What do we know about the API rate limits?"
-"Reflect on this conversation and save important decisions"
-```
+## Tools (13)
 
-## Tools
-
-### Memory Tools
+### Core Memory
 
 | Tool | Description |
 |------|-------------|
-| `memory_remember` | Store a new memory |
-| `memory_recall` | Semantic search across memories (supports `synthesize` param and graph context) |
-| `memory_forget` | Archive a memory |
-| `memory_reflect` | Extract memories from transcripts |
-| `memory_stats` | Memory system overview |
-| `memory_get` | Retrieve memories by ID (supports `synthesize` param and graph context) |
-| `memory_backfill_embeddings` | Generate embeddings for memories without them |
+| `memory_remember` | Store a new memory with optional auto-linking to similar memories |
+| `memory_recall` | Semantic search with centrality-weighted ranking and graph context |
+| `memory_get` | Retrieve memories by ID with optional graph traversal (BFS) |
+| `memory_recent` | Get the last X memories — title-card format by default, verbose on request |
+| `memory_archive` | Archive memories with foundational/centrality protection (soft delete) |
 
-#### Result Enhancement Features
+### Knowledge Graph
 
-Both `memory_recall` and `memory_get` support:
+| Tool | Description |
+|------|-------------|
+| `memory_link` | Create a typed, weighted, optionally bidirectional edge between memories |
+| `memory_unlink` | Remove edges between memories |
 
-- **`synthesize=true/false`** - Control whether results are returned as raw objects or processed through the local LLM for natural language summaries.
+Standard relationship types: `relates_to`, `derived_from`, `contradicts`, `exemplifies`, `refines`, `supersedes`. Custom types are also supported.
 
-- **`include_graph=true/false`** - Include depth-1 graph context (incoming/outgoing edges) in results. Default: `true`
-  - `memory_recall`: Graph context included for top N results (controlled by `graph_top_n`, default 5)
-  - `memory_get`: Graph context included for ALL retrieved memories (intentional targeted fetches)
+### Messaging
 
-Graph context returns edge information showing how memories connect:
+| Tool | Description |
+|------|-------------|
+| `message` | Unified inter-instance messaging — send, get, mark read/unread, subscribe to channels |
+
+Replaces the old `handoff_send` / `handoff_get` / `handoff_mark_read` tools with a single action-based interface supporting channels, priorities (0-10), and pub/sub patterns.
+
+### Code Indexing
+
+| Tool | Description |
+|------|-------------|
+| `code_remember_tool` | Index a source file into the palace (creates linked prose + code memories) |
+
+Queries hit the prose description via semantic search, then graph traversal retrieves the actual source code. This separation produces far better search results than embedding raw code.
+
+### Maintenance
+
+| Tool | Description |
+|------|-------------|
+| `memory_audit` | Health checks — duplicates, stale memories, orphan edges, contradictions, missing embeddings |
+| `memory_reembed` | Regenerate embeddings (backfill missing, refresh stale, re-embed after model change) |
+| `memory_stats` | Overview statistics — counts by type, instance, project, most accessed, recently added |
+
+### Processing
+
+| Tool | Description |
+|------|-------------|
+| `memory_reflect` | Extract memories from conversation transcripts (JSONL or TOON format) |
+
+## Key Concepts
+
+### Graph Context in Retrieval
+
+Both `memory_recall` and `memory_get` automatically include depth-1 graph context (incoming/outgoing edges) by default. This shows how memories connect without separate graph traversal calls.
+
+- **`memory_recall`** — Graph context for top N results (default 5, configurable via `graph_top_n`)
+- **`memory_get`** — Graph context for ALL requested memories (targeted fetches get full context)
+
+### Auto-Linking
+
+When storing a new memory, the system automatically finds similar existing memories and creates typed edges:
+
+- **Auto-linked** (>= 0.75 similarity) — Edges created automatically with LLM-classified relationship types
+- **Suggested** (0.675-0.75 similarity) — Surfaced for human review, no edges created
+
+Configurable per-instance. Can be scoped to same-project only.
+
+### Multi-Project Memories
+
+Memories can belong to one or more projects simultaneously. Queries can filter by single project (contains) or multiple projects (union). Stats explode multi-project memories across each project for accurate counts.
+
+### Centrality-Weighted Ranking
+
+Recall results are ranked by a weighted combination of:
+
+```
+score = (semantic_similarity x 0.7) + (log(access_count + 1) x 0.15) + (in_degree_centrality x 0.15)
+```
+
+Frequently accessed, well-connected memories rank higher than isolated ones at the same similarity score.
+
+## Configuration
+
+Configuration loads from `~/.memory-palace/config.json` with environment variable overrides.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MEMORY_PALACE_DATA_DIR` | Data directory | `~/.memory-palace` |
+| `MEMORY_PALACE_DATABASE_URL` | Database connection URL (overrides config file) | None |
+| `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
+| `MEMORY_PALACE_EMBEDDING_MODEL` | Embedding model | Auto-detected |
+| `MEMORY_PALACE_LLM_MODEL` | LLM for synthesis/extraction | Auto-detected |
+| `MEMORY_PALACE_INSTANCE_ID` | Default instance ID | `unknown` |
+| `MEMORY_PALACE_NOTIFY_COMMAND` | Post-send notification command template | None |
+
 ```json
 {
-  "graph_context": {
-    "memory_id": {
-      "outgoing": [{"target_id": 42, "target_subject": "...", "relation_type": "relates_to", "strength": 1.0}],
-      "incoming": [{"source_id": 17, "source_subject": "...", "relation_type": "derived_from", "strength": 1.0}]
-    }
-  }
+  "database": {
+    "type": "sqlite",
+    "url": null
+  },
+  "ollama_url": "http://localhost:11434",
+  "embedding_model": null,
+  "llm_model": null,
+  "synthesis": {
+    "enabled": true
+  },
+  "auto_link": {
+    "enabled": true,
+    "link_threshold": 0.75,
+    "suggest_threshold": 0.675
+  },
+  "toon_output": true,
+  "instances": ["desktop", "code", "web"],
+  "notify_command": null
 }
 ```
 
-### Code Retrieval Tools
-
-Index source files for natural language search. The system creates two linked memories per file: a prose description (embedded for semantic search) and the actual source code (stored but not embedded). Queries hit the prose, then graph traversal retrieves the code.
-
-| Tool | Description |
-|------|-------------|
-| `code_remember_tool` | Index a source file into the palace |
-| `code_recall_tool` | Search indexed code using natural language |
-
-**Example usage:**
-
-```python
-# Index a file
-code_remember_tool(
-    code_path="/path/to/database.py",
-    project="my-project",
-    instance_id="code"
-)
-
-# Query later
-code_recall_tool(query="How does the database connection work?")
-code_recall_tool(query="Show me the retry logic", synthesize=False)
-```
-
-### Handoff Tools
-
-| Tool | Description |
-|------|-------------|
-| `handoff_send` | Send message to another Claude instance |
-| `handoff_get` | Check for messages from other instances |
-| `handoff_mark_read` | Mark a handoff message as read |
-
-### Knowledge Graph Tools
-
-Build relationships between memories for richer retrieval and traversal.
-
-| Tool | Description |
-|------|-------------|
-| `memory_link` | Create an edge between two memories |
-| `memory_unlink` | Remove an edge between memories |
-| `memory_related` | Get memories connected to a given memory (1 hop) |
-| `memory_graph` | Traverse the knowledge graph from a starting point |
-| `memory_supersede` | Mark a new memory as replacing an old one |
-| `memory_relationship_types` | List available relationship types |
-
-**Standard relationship types:** `relates_to`, `derived_from`, `contradicts`, `exemplifies`, `refines`, `supersedes`
+For PostgreSQL, set `database.type` to `"postgres"` and provide a connection URL. See [docs/architecture.md](docs/architecture.md) for backend details.
 
 ## Architecture
 
@@ -149,64 +190,67 @@ Build relationships between memories for richer retrieval and traversal.
 memory-palace/
 ├── mcp_server/              # MCP server package
 │   ├── server.py            # Server entry point
-│   └── tools/               # Tool implementations
+│   ├── toon_wrapper.py      # TOON response encoding
+│   └── tools/               # 13 tool implementations
 ├── memory_palace/           # Core library
-│   ├── config.py            # Configuration handling
-│   ├── database.py          # SQLAlchemy database
-│   ├── models.py            # Data models
+│   ├── models_v3.py         # SQLAlchemy models (Memory, MemoryEdge, Message)
+│   ├── database.py          # Database connection (SQLite / PostgreSQL)
 │   ├── embeddings.py        # Ollama embedding client
-│   └── llm.py               # LLM integration
-├── setup/                   # Setup utilities
-│   └── first_run.py         # Setup wizard
-└── docs/                    # Documentation
+│   ├── llm.py               # LLM integration (synthesis, classification)
+│   ├── config_v2.py         # Configuration with auto-link settings
+│   ├── services/            # Business logic layer
+│   │   ├── memory_service.py      # remember, recall, archive, stats
+│   │   ├── graph_service.py       # link, unlink, traverse
+│   │   ├── message_service.py     # pub/sub messaging
+│   │   ├── maintenance_service.py # audit, reembed, cleanup
+│   │   ├── code_service.py        # code indexing + retrieval
+│   │   └── reflection_service.py  # transcript extraction
+│   └── migrations/          # Schema migration scripts
+├── setup/                   # Setup wizard
+├── extensions/              # Optional extensions (Moltbook gateway, TOON converter)
+├── examples/                # Integration examples and walkthroughs
+├── docs/                    # Documentation
+└── tests/                   # Test suite
 ```
 
-## Configuration
+See [docs/architecture.md](docs/architecture.md) for the full design vision, knowledge graph details, and scaling roadmap.
 
-Configuration is loaded from `~/.memory-palace/config.json` with environment variable overrides.
+## Extensions
 
-**Environment variables:**
+Memory Palace includes optional extensions that operate as standalone tools or additional MCP servers:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MEMORY_PALACE_DATA_DIR` | Data directory | `~/.memory-palace` |
-| `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
-| `MEMORY_PALACE_EMBEDDING_MODEL` | Embedding model | Auto-detected |
-| `MEMORY_PALACE_LLM_MODEL` | LLM for reflection | Auto-detected |
-| `MEMORY_PALACE_INSTANCE_ID` | Default instance ID | `unknown` |
+| Extension | Description | Type |
+|-----------|-------------|------|
+| [moltbook-gateway](extensions/moltbook-gateway/) | Standalone MCP server for Moltbook submission with 6 mechanical interlocks | MCP Server |
+| [toon-converter](extensions/toon-converter/) | CLI + optional MCP server for converting JSONL to TOON format | CLI / MCP Server |
 
-**Config file (`~/.memory-palace/config.json`):**
+Extensions are independent from the core Memory Palace server and can be used separately.
 
-```json
-{
-  "ollama_url": "http://localhost:11434",
-  "embedding_model": null,
-  "llm_model": null,
-  "db_path": "~/.memory-palace/memories.db",
-  "instances": ["desktop", "code", "web"]
-}
-```
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [agent-prompt.md](examples/agent-prompt.md) | Template for adding memory instructions to agent system prompts |
+| [soul-file.md](examples/soul-file.md) | Template for integrating memory into character/persona files |
+| [centrality_weighted_search.py](examples/centrality_weighted_search.py) | Python example of centrality-weighted search |
+| [test_graph_context_mcp.md](examples/test_graph_context_mcp.md) | Walkthrough for testing graph context via MCP |
+| [test_maintenance_mcp.md](examples/test_maintenance_mcp.md) | Walkthrough for testing maintenance tools via MCP |
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/README.md](docs/README.md) | Detailed installation, configuration, and usage guide |
+| [docs/architecture.md](docs/architecture.md) | Design vision, knowledge graph, backends, scaling roadmap |
+| [docs/models.md](docs/models.md) | Model selection guide with VRAM budgets |
+| [docs/use-cases.md](docs/use-cases.md) | Real-world use cases from personal to enterprise |
+| [docs/centrality-weighted-retrieval.md](docs/centrality-weighted-retrieval.md) | Centrality ranking deep-dive |
+| [docs/QUICKSTART_CENTRALITY.md](docs/QUICKSTART_CENTRALITY.md) | Centrality-weighted retrieval quickstart |
+| [docs/MAINTENANCE.md](docs/MAINTENANCE.md) | Maintenance design document |
+| [docs/MAINTENANCE_QUICKREF.md](docs/MAINTENANCE_QUICKREF.md) | Maintenance quick reference |
+| [docs/TESTING_MAINTENANCE.md](docs/TESTING_MAINTENANCE.md) | Testing maintenance tools guide |
+| [docs/MIGRATION_2.0.md](docs/MIGRATION_2.0.md) | v1.0 to v2.0 migration guide |
 
 ## License
 
-MIT License
-
-Copyright (c) 2024
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+[MIT](LICENSE)

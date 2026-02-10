@@ -1,4 +1,4 @@
-"""Reflect tool for Claude Memory Palace MCP server."""
+"""Reflect tool for Memory Palace MCP server."""
 from typing import Any, Optional
 
 from memory_palace.services import reflect
