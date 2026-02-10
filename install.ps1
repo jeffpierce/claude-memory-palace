@@ -290,6 +290,43 @@ if (-not $pythonCmd) {
 }
 
 # =============================================================================
+# DATABASE MIGRATION (for upgrades)
+# =============================================================================
+Write-Header "Upgrade Check"
+
+$palaceDir = Join-Path $env:USERPROFILE ".memory-palace"
+$dbFile = Join-Path $palaceDir "memories.db"
+
+if (Test-Path $dbFile) {
+    Write-Info "Found existing Memory Palace database"
+    Write-Info "Running upgrade check..."
+
+    if ($pythonCmd) {
+        try {
+            Write-Info "Running v2 -> v3 migration (idempotent)..."
+            & $pythonCmd -m memory_palace.migrations.v2_to_v3
+            Write-Success "v2 -> v3 migration check complete"
+        } catch {
+            Write-Warning "v2 -> v3 migration failed: $_"
+            Write-Info "You can retry manually: $pythonCmd -m memory_palace.migrations.v2_to_v3"
+        }
+
+        try {
+            Write-Info "Running v3 -> v3.1 migration (idempotent)..."
+            & $pythonCmd -m memory_palace.migrations.v3_to_v3_1
+            Write-Success "v3 -> v3.1 migration check complete"
+        } catch {
+            Write-Warning "v3 -> v3.1 migration failed: $_"
+            Write-Info "You can retry manually: $pythonCmd -m memory_palace.migrations.v3_to_v3_1"
+        }
+    } else {
+        Write-Warning "Cannot run migrations without Python"
+    }
+} else {
+    Write-Info "No existing database found — fresh install"
+}
+
+# =============================================================================
 # FIRST-TIME SETUP
 # =============================================================================
 Write-Header "First-Time Setup"

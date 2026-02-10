@@ -282,6 +282,38 @@ else
 fi
 
 # =============================================================================
+# DATABASE MIGRATION (for upgrades)
+# =============================================================================
+header "Upgrade Check"
+
+if [ -f "$HOME/.memory-palace/memories.db" ]; then
+    info "Found existing Memory Palace database"
+    info "Running upgrade check..."
+
+    if [ -n "$PYTHON_CMD" ]; then
+        info "Running v2 -> v3 migration (idempotent)..."
+        if $PYTHON_CMD -m memory_palace.migrations.v2_to_v3; then
+            success "v2 -> v3 migration check complete"
+        else
+            warning "v2 -> v3 migration failed"
+            info "You can retry manually: $PYTHON_CMD -m memory_palace.migrations.v2_to_v3"
+        fi
+
+        info "Running v3 -> v3.1 migration (idempotent)..."
+        if $PYTHON_CMD -m memory_palace.migrations.v3_to_v3_1; then
+            success "v3 -> v3.1 migration check complete"
+        else
+            warning "v3 -> v3.1 migration failed"
+            info "You can retry manually: $PYTHON_CMD -m memory_palace.migrations.v3_to_v3_1"
+        fi
+    else
+        warning "Cannot run migrations without Python"
+    fi
+else
+    info "No existing database found — fresh install"
+fi
+
+# =============================================================================
 # FIRST-TIME SETUP
 # =============================================================================
 header "First-Time Setup"

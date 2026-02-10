@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared.detect import detect_all, SystemInfo
 from shared.clients import discover_clients, configure_clients, ClientInfo
 from shared.models import get_model_recommendation, pull_model, check_model_installed, ModelRecommendation
+from shared.migrate import detect_existing_palace, detect_and_migrate, detection_display, PalaceInfo
 from shared.install_core import (
     get_default_install_dir,
     find_python,
@@ -56,6 +57,8 @@ class InstallerApp:
         self.system_info: Optional[SystemInfo] = None
         self.clients: List[ClientInfo] = []
         self.model_rec: Optional[ModelRecommendation] = None
+        self.palace_info: Optional[PalaceInfo] = None
+        self.migration_result = None
         self.install_dir = Path.home() / "memory-palace"
 
         # User selections
@@ -163,6 +166,7 @@ class InstallerApp:
             ("ollama", "Ollama"),
             ("gpu", "GPU"),
             ("clients", "AI Clients"),
+            ("palace", "Existing Palace"),
         ]
         for key, label in checks:
             row = ttk.Frame(self.detect_frame)
@@ -249,6 +253,14 @@ class InstallerApp:
         self.root.after(
             0,
             lambda: self._update_detect("clients", len(installed) > 0, client_detail),
+        )
+
+        # Existing palace detection
+        self.palace_info = detect_existing_palace()
+        palace_ok, palace_detail = detection_display(self.palace_info)
+        self.root.after(
+            0,
+            lambda: self._update_detect("palace", palace_ok, palace_detail),
         )
 
         # Auto-advance after a brief pause
@@ -652,7 +664,7 @@ class InstallerApp:
         self.root.after(0, lambda: self.progress_bar.configure(value=val))
 
     def _run_install(self):
-        steps = 7  # download, venv, package, database config, embedding, base LLM, configure
+        steps = 8  # download, venv, package, migration, database config, embedding, base LLM, configure
         if (self.install_llm_var.get() and self.model_rec.llm_model
                 and self.model_rec.llm_model != "qwen3:1.7b"):
             steps += 1  # upgraded LLM
@@ -706,20 +718,42 @@ class InstallerApp:
             progress += step_size
             self._set_progress(progress)
 
-            # 4. Configure database
-            db_type = self.db_type_var.get()
-            if db_type == "sqlite":
-                self._log("💾 Database: SQLite (default)")
-                self._log("  ✓ Will be created automatically on first use")
+            # 4. Migration (if upgrading)
+            is_upgrade = self.palace_info and self.palace_info.exists
+            if is_upgrade and (self.palace_info.needs_config_migration or self.palace_info.needs_schema_migration):
+                self._log("🔄 Upgrading existing database...")
+                self.migration_result = detect_and_migrate(
+                    self.install_dir, self.palace_info, progress=self._log
+                )
+                if self.migration_result.errors:
+                    for err in self.migration_result.errors:
+                        self._log(f"  ⚠ {err}")
+                    self._log("  Migration had issues — your backup is safe")
+                else:
+                    self._log("  ✓ Migration complete")
+            elif is_upgrade:
+                self._log("📋 Existing palace is up to date — no migration needed")
             else:
-                # PostgreSQL
-                self._log("💾 Configuring PostgreSQL connection...")
-                pg_url = self.pg_url_var.get()
-                self._log(f"  Testing connection to {pg_url}...")
+                self._log("📋 Fresh install — no migration needed")
+            progress += step_size
+            self._set_progress(progress)
 
-                # Test the connection
-                venv_python = get_venv_python(self.install_dir)
-                test_code = f'''from sqlalchemy import create_engine
+            # 5. Configure database
+            if not is_upgrade:
+                # Fresh install: configure database and write config
+                db_type = self.db_type_var.get()
+                if db_type == "sqlite":
+                    self._log("💾 Database: SQLite (default)")
+                    self._log("  ✓ Will be created automatically on first use")
+                else:
+                    # PostgreSQL
+                    self._log("💾 Configuring PostgreSQL connection...")
+                    pg_url = self.pg_url_var.get()
+                    self._log(f"  Testing connection to {pg_url}...")
+
+                    # Test the connection
+                    venv_python = get_venv_python(self.install_dir)
+                    test_code = f'''from sqlalchemy import create_engine
 try:
     e = create_engine("{pg_url}")
     c = e.connect()
@@ -728,53 +762,55 @@ try:
 except Exception as ex:
     print(f"ERROR: {{ex}}")
 '''
-                try:
-                    result_pg = subprocess.run(
-                        [str(venv_python), "-c", test_code],
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-                    if result_pg.returncode == 0 and "OK" in result_pg.stdout:
-                        self._log("  ✓ PostgreSQL connection successful")
-                        pg_connection_ok = True
-                    else:
-                        error_msg = result_pg.stdout + result_pg.stderr
-                        self._log(f"  ⚠ PostgreSQL connection failed: {error_msg.strip()}")
+                    try:
+                        result_pg = subprocess.run(
+                            [str(venv_python), "-c", test_code],
+                            capture_output=True,
+                            text=True,
+                            timeout=10
+                        )
+                        if result_pg.returncode == 0 and "OK" in result_pg.stdout:
+                            self._log("  ✓ PostgreSQL connection successful")
+                            pg_connection_ok = True
+                        else:
+                            error_msg = result_pg.stdout + result_pg.stderr
+                            self._log(f"  ⚠ PostgreSQL connection failed: {error_msg.strip()}")
+                            self._log("  You can configure this later in ~/.memory-palace/config.json")
+                    except subprocess.TimeoutExpired:
+                        self._log("  ⚠ PostgreSQL connection test timed out")
                         self._log("  You can configure this later in ~/.memory-palace/config.json")
-                except subprocess.TimeoutExpired:
-                    self._log("  ⚠ PostgreSQL connection test timed out")
-                    self._log("  You can configure this later in ~/.memory-palace/config.json")
-                except Exception as e:
-                    self._log(f"  ⚠ PostgreSQL connection test error: {str(e)}")
-                    self._log("  You can configure this later in ~/.memory-palace/config.json")
+                    except Exception as e:
+                        self._log(f"  ⚠ PostgreSQL connection test error: {str(e)}")
+                        self._log("  You can configure this later in ~/.memory-palace/config.json")
 
-            # Write config.json
-            self._log("⚙️  Writing configuration file...")
-            config_dir = Path.home() / ".memory-palace"
-            config_dir.mkdir(parents=True, exist_ok=True)
-            config_path = config_dir / "config.json"
+                # Write config.json
+                self._log("⚙️  Writing configuration file...")
+                config_dir = Path.home() / ".memory-palace"
+                config_dir.mkdir(parents=True, exist_ok=True)
+                config_path = config_dir / "config.json"
 
-            config = {
-                "database": {
-                    "type": db_type,
-                    "url": self.pg_url_var.get() if db_type == "postgres" else None
-                },
-                "ollama_url": "http://localhost:11434",
-                "embedding_model": None,
-                "llm_model": None,
-                "synthesis": {"enabled": True},
-                "auto_link": {
-                    "enabled": True,
-                    "link_threshold": 0.75,
-                    "suggest_threshold": 0.675
-                },
-                "toon_output": True
-            }
+                config = {
+                    "database": {
+                        "type": db_type,
+                        "url": self.pg_url_var.get() if db_type == "postgres" else None
+                    },
+                    "ollama_url": "http://localhost:11434",
+                    "embedding_model": None,
+                    "llm_model": None,
+                    "synthesis": {"enabled": True},
+                    "auto_link": {
+                        "enabled": True,
+                        "link_threshold": 0.75,
+                        "suggest_threshold": 0.675
+                    },
+                    "toon_output": True
+                }
 
-            with open(config_path, "w") as f:
-                json.dump(config, f, indent=2)
-            self._log(f"  ✓ Config written to {config_path}")
+                with open(config_path, "w") as f:
+                    json.dump(config, f, indent=2)
+                self._log(f"  ✓ Config written to {config_path}")
+            else:
+                self._log("⚙️  Using existing configuration file")
 
             progress += step_size
             self._set_progress(progress)
@@ -868,10 +904,19 @@ except Exception as ex:
             success = False
 
         # Store database configuration state for completion screen
-        self.db_config_state = {
-            "type": self.db_type_var.get(),
-            "pg_connection_ok": pg_connection_ok if self.db_type_var.get() == "postgres" else None
-        }
+        is_upgrade = self.palace_info and self.palace_info.exists
+        if is_upgrade:
+            # For upgrades, detect type from existing config
+            db_type_for_state = "postgres" if (self.palace_info and self.palace_info.is_postgres) else "sqlite"
+            self.db_config_state = {
+                "type": db_type_for_state,
+                "pg_connection_ok": None,
+            }
+        else:
+            self.db_config_state = {
+                "type": self.db_type_var.get(),
+                "pg_connection_ok": pg_connection_ok if self.db_type_var.get() == "postgres" else None,
+            }
 
         self.root.after(1000, lambda: self._show_complete(success))
 
@@ -932,6 +977,30 @@ except Exception as ex:
                             font=("Segoe UI", 10),
                             foreground="orange",
                         ).pack(anchor=tk.W, pady=(5, 0))
+
+            # Show migration status if applicable
+            if self.migration_result and self.migration_result.had_work:
+                if self.migration_result.schema_migrated:
+                    ttk.Label(
+                        info_frame,
+                        text="Database: Migrated to v3.1 schema",
+                        font=("Segoe UI", 10),
+                        foreground="green",
+                    ).pack(anchor=tk.W, pady=(5, 0))
+                if self.migration_result.db_backup_path:
+                    ttk.Label(
+                        info_frame,
+                        text=f"Backup: {self.migration_result.db_backup_path.name}",
+                        font=("Segoe UI", 10),
+                        foreground="gray",
+                    ).pack(anchor=tk.W, pady=(2, 0))
+                if self.migration_result.errors:
+                    ttk.Label(
+                        info_frame,
+                        text="Migration had issues — check log above",
+                        font=("Segoe UI", 10),
+                        foreground="orange",
+                    ).pack(anchor=tk.W, pady=(5, 0))
 
             if configured_names:
                 ttk.Label(
