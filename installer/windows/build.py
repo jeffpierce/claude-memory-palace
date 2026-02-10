@@ -71,11 +71,33 @@ def build():
     entry.write_text('''#!/usr/bin/env python3
 """
 PyInstaller entry point - extracts bundled package and launches GUI.
+
+Hidden imports below force PyInstaller to bundle stdlib modules that
+the GUI app and its shared modules need at runtime. Without these,
+PyInstaller only analyzes THIS file's direct imports and misses the
+transitive dependencies loaded dynamically after extraction.
 """
 import sys
 import os
 import shutil
 from pathlib import Path
+
+# --- Hidden imports for PyInstaller dependency analysis ---
+# app.py
+import webbrowser          # noqa: F401
+import threading           # noqa: F401
+import tkinter             # noqa: F401
+import tkinter.ttk         # noqa: F401
+import tkinter.messagebox  # noqa: F401
+# detect.py, clients.py
+import platform            # noqa: F401
+import re                  # noqa: F401
+# migrate.py
+import sqlite3             # noqa: F401
+# shared modules
+import json                # noqa: F401
+import subprocess          # noqa: F401
+import dataclasses         # noqa: F401
 
 
 def get_bundled_path() -> Path:
