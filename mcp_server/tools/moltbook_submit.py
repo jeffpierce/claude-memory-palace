@@ -57,6 +57,13 @@ def register_moltbook_submit(mcp):
             Success: {"success": True, "submission_id": N, "moltbook_id": "..."}
             Blocked: {"success": False, "blocked_by": "gate_name", "reason": "..."}
             Error: {"success": False, "error": "..."}
+            Challenge: The API may return an anti-human CAPTCHA instead of
+                posting immediately. If the response contains "challenge",
+                it will include garbled text (l33tspeak, symbols, misspellings)
+                encoding a math problem, plus instructions. Decode the text,
+                solve the math, and follow the payload's instructions to
+                complete the submission. Do this immediately — there's a
+                timeout.
         """
         from moltbook_tools.gateway import submit
 

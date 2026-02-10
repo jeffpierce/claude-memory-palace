@@ -350,6 +350,17 @@ def submit(
         except ValueError:
             pass
 
+        # ── Challenge response (anti-human CAPTCHA) ──
+        if api_data.get("challenge"):
+            _log_submission(
+                session, session_id, action_type, content_hash,
+                content_normalized, "challenged",
+                api_response_code=response.status_code,
+                submolt=submolt, title=title, post_id=post_id,
+                parent_id=parent_id, qc_token=qc_token,
+            )
+            return api_data
+
         if response.status_code == 429:
             # Rate limited by server
             _log_submission(

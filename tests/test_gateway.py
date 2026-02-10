@@ -687,3 +687,95 @@ class TestGateway:
         ).first()
         assert entry is not None
         assert entry.blocked_by == "word_count"
+
+
+# ── Challenge response helpers ──────────────────────────────────────
+
+def _mock_api_challenge(challenge_token="ch_test123",
+                        challenge_text="w|-|47 1z 7hr33 plu5 f0ur?",
+                        timeout_seconds=30):
+    """Return a mock response for a challenge (anti-human CAPTCHA)."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": False,
+        "challenge": True,
+        "challenge_token": challenge_token,
+        "challenge_text": challenge_text,
+        "timeout_seconds": timeout_seconds,
+    }
+    return mock_resp
+
+
+class TestChallengeResponse:
+    """Anti-human CAPTCHA: gateway surfaces challenges instead of swallowing them."""
+
+    def test_submit_surfaces_challenge(self, db_session):
+        """When API returns a challenge, gateway passes the raw response through."""
+        content = "Content that triggers a challenge."
+        token = _make_qc_token(db_session, content)
+
+        with patch("moltbook_tools.gateway.requests.post",
+                    return_value=_mock_api_challenge()):
+            result = submit(
+                action_type="post", content=content, session_id="challenge-1",
+                qc_token=token, submolt="test", title="Test",
+            )
+
+        # Raw API response passed through unchanged
+        assert result["challenge"] is True
+        assert result["challenge_token"] == "ch_test123"
+        assert result["challenge_text"] == "w|-|47 1z 7hr33 plu5 f0ur?"
+        assert result["timeout_seconds"] == 30
+
+    def test_challenge_logged_as_challenged(self, db_session):
+        """Challenge response creates a log entry with status='challenged'."""
+        content = "Content for challenged log test."
+        token = _make_qc_token(db_session, content)
+
+        with patch("moltbook_tools.gateway.requests.post",
+                    return_value=_mock_api_challenge()):
+            submit(
+                action_type="post", content=content, session_id="challenge-log",
+                qc_token=token, submolt="test", title="Test",
+            )
+
+        entry = db_session.query(SubmissionLog).filter(
+            SubmissionLog.session_id == "challenge-log",
+            SubmissionLog.status == "challenged",
+        ).first()
+        assert entry is not None
+
+    def test_challenge_does_not_consume_qc_token(self, db_session):
+        """QC token must NOT be consumed when a challenge is returned."""
+        content = "Content where QC token should survive the challenge."
+        token = _make_qc_token(db_session, content)
+
+        with patch("moltbook_tools.gateway.requests.post",
+                    return_value=_mock_api_challenge()):
+            submit(
+                action_type="post", content=content, session_id="challenge-qc",
+                qc_token=token, submolt="test", title="Test",
+            )
+
+        approval = db_session.query(QCApproval).filter(
+            QCApproval.token == token
+        ).first()
+        assert approval.consumed_at is None
+
+    def test_challenge_does_not_fall_through_to_error_path(self, db_session):
+        """A challenge with success=False should NOT be treated as an API error."""
+        content = "Content that must not become an API error."
+        token = _make_qc_token(db_session, content)
+
+        with patch("moltbook_tools.gateway.requests.post",
+                    return_value=_mock_api_challenge()):
+            result = submit(
+                action_type="post", content=content, session_id="challenge-no-error",
+                qc_token=token, submolt="test", title="Test",
+            )
+
+        # Raw API response — has "challenge", not gateway error wrapping
+        assert result["challenge"] is True
+        assert "blocked_by" not in result
+        assert "api_response_code" not in result
