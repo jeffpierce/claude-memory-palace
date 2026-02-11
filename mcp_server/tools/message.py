@@ -34,19 +34,14 @@ def _execute_openclaw_wake(
     priority: int,
 ) -> None:
     """
-    Fire-and-forget HTTP wake to an OpenClaw gateway. Never raises.
+    Fire-and-forget HTTP notification to an OpenClaw gateway. Never raises.
 
-    Uses /hooks/wake to inject a system event into the gateway's main
-    session. The wake text includes enough context for the main agent
-    to relay to the correct target session if needed.
+    POSTs to /hooks/palace — a custom webhook endpoint with a JS
+    transform (palace.js) that routes notifications to the correct
+    Discord DM channel based on the target instance.
 
-    Note: OpenClaw's /hooks/wake and /hooks/agent endpoints only target
-    the main agent session. For multi-agent routing, the main agent
-    must relay via sessions_send, or each agent must poll their own
-    palace inbox on heartbeat.
-
-    Priority >= 5 uses mode "now" (immediate wake), lower priority
-    uses "next-heartbeat".
+    The transform maps to_instance → Discord channel ID and returns
+    an agent hook action with deliver=true targeting the right DM.
 
     Args:
         route: Dict with "gateway" (URL), "token" (auth secret), and
@@ -61,30 +56,22 @@ def _execute_openclaw_wake(
     try:
         gateway_url = route["gateway"].rstrip("/")
         token = route.get("token", "")
-        session_key = route.get("session")
 
-        wake_text = (
-            f"Palace message from {from_instance} to {to_instance}: "
-            f"{subject or message_type} (msg #{message_id})"
-        )
-
-        # If route has a session key, include relay instructions
-        if session_key:
-            wake_text += (
-                f"\n[Relay to session: {session_key} — "
-                f"use sessions_send to notify {to_instance} to check "
-                f"their palace inbox for message #{message_id}]"
-            )
-
+        # POST to /hooks/palace — custom webhook with JS transform
+        # that routes to the correct Discord DM based on to_instance
         payload_dict = {
-            "text": wake_text,
-            "mode": "now" if priority >= 5 else "next-heartbeat",
+            "from_instance": from_instance,
+            "to_instance": to_instance,
+            "message_type": message_type,
+            "subject": subject,
+            "message_id": message_id,
+            "priority": priority,
         }
 
         payload = _json.dumps(payload_dict).encode("utf-8")
 
         req = urllib.request.Request(
-            f"{gateway_url}/hooks/wake",
+            f"{gateway_url}/hooks/palace",
             data=payload,
             headers={
                 "Content-Type": "application/json",
