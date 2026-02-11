@@ -36,12 +36,14 @@ def _execute_openclaw_wake(
     """
     Fire-and-forget HTTP wake to an OpenClaw gateway. Never raises.
 
-    Sends a POST to the gateway's /hooks/wake endpoint to notify the
-    target instance of a new message. Priority >= 5 uses mode "now"
-    (immediate wake), lower priority uses "next-heartbeat".
+    Sends a POST to the gateway's /hooks/agent endpoint to deliver a
+    system event to the target agent session. Uses sessionKey for
+    targeted delivery (not broadcast). Priority >= 5 uses wakeMode "now"
+    (immediate), lower priority uses "next-heartbeat".
 
     Args:
-        route: Dict with "gateway" (URL) and "token" (auth secret) keys
+        route: Dict with "gateway" (URL), "token" (auth secret), and
+               optional "session" (agent session key) keys
         from_instance: Sender instance ID
         to_instance: Recipient instance ID
         message_type: Type of message sent
@@ -52,19 +54,24 @@ def _execute_openclaw_wake(
     try:
         gateway_url = route["gateway"].rstrip("/")
         token = route.get("token", "")
+        session_key = route.get("session")
 
         wake_text = (
             f"Palace message from {from_instance}: "
             f"{subject or message_type} (msg #{message_id})"
         )
 
-        payload = _json.dumps({
-            "text": wake_text,
-            "mode": "now" if priority >= 5 else "next-heartbeat",
-        }).encode("utf-8")
+        payload_dict = {
+            "message": wake_text,
+            "wakeMode": "now" if priority >= 5 else "next-heartbeat",
+        }
+        if session_key:
+            payload_dict["sessionKey"] = session_key
+
+        payload = _json.dumps(payload_dict).encode("utf-8")
 
         req = urllib.request.Request(
-            f"{gateway_url}/hooks/wake",
+            f"{gateway_url}/hooks/agent",
             data=payload,
             headers={
                 "Content-Type": "application/json",

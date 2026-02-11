@@ -64,8 +64,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # Example: "openclaw cron wake --text \"{from_instance} sent {message_type} to {to_instance}\""
     "notify_command": None,
     # Instance routes for OpenClaw push notifications
-    # Maps instance_id -> {"gateway": "http://...", "token": "secret"}
-    # When set, post-send notification uses HTTP wake instead of/alongside notify_command.
+    # Maps instance_id -> {"gateway": "http://...", "token": "secret", "session": "agent:X:main"}
+    # When set, post-send notification uses HTTP /hooks/agent for targeted delivery.
+    # "session" is the OpenClaw session key for the target agent (enables targeted wake).
     # Env override: MEMORY_PALACE_INSTANCE_ROUTES (JSON string)
     "instance_routes": {},
 }

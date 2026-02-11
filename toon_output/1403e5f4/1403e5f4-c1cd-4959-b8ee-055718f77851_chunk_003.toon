@@ -1,0 +1,1005 @@
+[13:52:53] USER: [RESULT:toolu_01]: Async agent launched successfully.
+agentId: ae1c60a (internal ID - do not mention to user. Use to re
+
+[13:52:57] ASSISTANT: [TOOL: TaskOutput]
+
+[13:52:57] USER: [RESULT:toolu_01]
+
+[13:53:01] ASSISTANT: Good, the Python agent is running and found all the references. Let me launch the markdown docs agent in parallel while the Python one works.
+
+[13:53:15] ASSISTANT: [TOOL: Task]
+
+[13:53:15] USER: [RESULT:toolu_01]: Async agent launched successfully.
+agentId: ad5883e (internal ID - do not mention to user. Use to re
+
+[13:53:19] ASSISTANT: Both agents running in parallel. Let me check on progress in a moment.
+
+[13:53:20] ASSISTANT: [TOOL: TaskOutput]
+
+[13:57:57] USER: [RESULT:toolu_01]
+
+[13:58:27] ASSISTANT: Python agent done. 69 files modified. Now let me check on the markdown agent:
+
+[13:58:27] ASSISTANT: [TOOL: TaskOutput]
+
+[13:58:27] USER: [RESULT:toolu_01]
+
+[13:58:55] ASSISTANT: [THINKING: Both agents are done. Let me do a final verification grep to make sure there are no remaining problematic "Claude" references across all files.]
+
+[13:58:55] ASSISTANT: Both agents done. Let me do a final verification to make sure nothing was missed and nothing got broken.
+
+[13:58:55] ASSISTANT: [TOOL: Grep]
+
+[13:58:55] ASSISTANT: [TOOL: Grep]
+
+[13:58:55] ASSISTANT: [TOOL: Grep]
+
+[13:59:23] USER: [RESULT:toolu_01]
+
+[13:59:23] USER: [RESULT:toolu_01]
+
+[13:59:23] USER: [RESULT:toolu_01]
+
+[13:59:50] ASSISTANT: Clean across all three patterns. Now let me verify the remaining Claude references are all legitimate (product names, vendor comparisons, config paths):
+
+[13:59:50] ASSISTANT: [TOOL: Grep]
+
+[13:59:50] ASSISTANT: [TOOL: Grep]
+
+[14:00:16] USER: [RESULT:toolu_01]
+
+[14:00:16] USER: [RESULT:toolu_01]
+
+[14:00:45] ASSISTANT: [THINKING: Let me verify every remaining reference is legitimate:
+
+**Python files** — all remaining references are:
+- `configure_claude.py` — ALL "Claude Desktop" product references (config paths, setup instr...]
+
+[14:00:45] ASSISTANT: Every remaining "Claude" reference is a legitimate product name (Claude Desktop, Claude Code), vendor comparison (alongside ChatGPT/Gemini), or config file path. Zero instances of "Claude Memory Palace", "Claude instances", or "Claude consciousness" remain.
+
+Let me make sure nothing broke:
+
+[14:00:45] ASSISTANT: [TOOL: Bash]
+
+[14:01:12] USER: [RESULT:toolu_01]
+
+[14:01:39] ASSISTANT: 🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: 179/179 passed. Zero breakage. Ship it.
+FeelingsBot: 🎯✅🧹
+iHeart_CarlSagan: The codebase is now genuinely model-agnostic. The MCP protocol doesn't care what model talks to it, and now the source code doesn't either.
+sequence_breaker: Clean separation — product names kept, generic AI references where they belong. Elegant.
+────────────────────────────────────────────────
+
+**179/179 tests pass.** De-Claude-ification complete.
+
+Here's the rundown:
+
+### What changed (~70 files)
+- **All Python docstrings**: "Claude Memory Palace" → "Memory Palace", "Claude instances" → "AI instances", "distributed Claude consciousness" → "distributed consciousness"
+- **MCP tool descriptions**: "Which Claude instance" → "Which instance"
+- **All markdown docs**: Same pattern — genericized where it was treating Claude as the only AI
+- **Installer UI/build scripts**: Window titles, descriptions, all genericized
+
+### What stayed (intentionally)
+- ✅ **"Claude Desktop"** and **"Claude Code"** — real MCP client product names, listed alongside Cursor/Windsurf
+- ✅ **Config file paths** — `%APPDATA%\Claude\claude_desktop_config.json` etc. are actual filesystem paths
+- ✅ **Vendor comparisons** — architecture.md comparing ChatGPT/Claude/Gemini lock-in
+- ✅ **Repo name** — "claude-memory-palace" in paths/URLs stays (that's just the repo name)
+- ✅ **docs/archive/** — untouched, they're archived
+
+### Verification
+- Zero instances of "Claude Memory Palace" remain in active code/docs
+- Zero instances of "Claude instances" remain
+- Zero instances of "Claude consciousness" remain
+- All remaining "Claude" references are legitimate product names or vendor comparisons
+- Full test suite: **179 passed, 0 failed**
+
+The codebase now properly reflects what Memory Palace actually is — a model-agnostic MCP server that works with *any* AI, not just Claude.
+
+[14:01:39] USER: <task-notification>
+<task-id>ad5883e</task-id>
+<status>completed</status>
+<summary>Agent "De-Claude-ify markdown documentation" completed</summary>
+<result>Excellent! Let me verify the remaining references are all legitimate:
+
+1. ✅ **README.md:18** - "Claude Desktop, Claude Code" - These are legitimate MCP client product names
+2. ✅ **docs/architecture.md:7** - "Anthropic's projects only work with Claude" - Correct vendor/product reference
+3. ✅ **docs/architecture.md:20** - ASCII diagram showing "Claude" as one model option among others - Legitimate comparative reference
+4. ✅ **docs/architecture.md:56** - "Switch from Claude to Gemini" - Comparative example showing model portability
+5. ✅ **docs/architecture.md:68** - "Anthropic's project knowledge locks you to Claude" - Correct vendor lock-in example
+6. ✅ **examples/test_maintenance_mcp.md:3** - "Claude Code" - Legitimate MCP client product name
+7. ✅ **examples/test_graph_context_mcp.md:9** - "Claude Desktop or another MCP client" - Legitimate product name with clear "or another" qualifier
+8. ✅ **docs/centrality-weighted-retrieval.md:206** - "Implementation in Claude Code" - Refers to the MCP client where it was coded
+9. ✅ **installer/ARCHITECTURE.md:43-44** - Config file paths for Claude Desktop and Claude Code - Legitimate product references
+10. ✅ **docs/archive/** - Archived files we're not modifying per instructions
+11. ✅ **extensions/toon-converter/EXAMPLES.md:190** - "Export Claude transcript" - Refers to exporting from Claude product
+12. ✅ **docs/README.md:52-57** - "Configure Claude Desktop" section with config file paths - Legitimate MCP client setup instructions
+13. ✅ **docs/TESTING_MAINTENANCE.md:23** - "Claude Code, Cursor, etc." - Lists MCP clients as examples
+
+All remaining references to "Claude" are legitimate! They either:
+- Refer to specific MCP client products (Claude Desktop, Claude Code)
+- Are comparative references showing Claude as one option among many vendors/models
+- Are in archived documentation (excluded from changes)
+- Refer to file paths and configuration for the actual Claude products
+
+Let me create a summary of all the changes made:
+
+## Summary of Changes
+
+I've successfully made the Memory Palace documentation model-agnostic while preserving all legitimate references to Claude Desktop and Claude Code as MCP client products. Here's what was changed:
+
+### Files Modified (9 files):
+
+1. **C:\Users\jeffr\projects\efaas\claude-memory-palace\docs\README.md**
+   - Title: "Claude Memory Palace" → "Memory Palace"
+   - "Claude instances" → "AI instances"
+
+2. **C:\Users\jeffr\projects\efaas\claude-memory-palace\docs\architecture.md**
+   - "Claude's projects only work with Anthropic" → "Anthropic's projects only work with Claude" (vendor clarity)
+   - "Claude's project knowledge locks you to Anthropic" → "Anthropic's project knowledge locks you to Claude" (vendor clarity)
+   - "Claude for complex reasoning" → "frontier models for complex reasoning"
+
+3. **C:\Users\jeffr\projects\efaas\claude-memory-palace\docs\use-cases.md**
+   - "working with Claude on a project" → "working with an AI on a project"
+   - "Claude Opus ships" → "a new frontier model ships"
+   - Example changed from "Claude/GPT-5/Claude" → "Model A/Model B/Model A"
+   - "Claude for synthesis quality" → "a frontier model for synthesis quality"
+
+4. **C:\Users\jeffr\projects\efaas\claude-memory-palace\examples\test_maintenance_mcp.md**
+   - "via MCP in Claude Code" → "via MCP in an MCP client like Claude Code"
+   - "Claude Code will start it" → "your MCP client will start it"
+   - All instances of "Ask Claude:" → "Ask your AI:"
+   - All instances of "Claude: [action]" → "AI: [action]"
+   - "from Claude Code" → "from your MCP client"
+
+5. **C:\Users\jeffr\projects\efaas\claude-memory-palace\docs\TESTING_MAINTENANCE.md**
+   - "Via MCP (Claude Code)" → "Via MCP (MCP Client)"
+   - Added "(e.g., Claude Code, Cursor, etc.)" for clarity
+   - "Ask Claude:" → "Ask your AI:" (all instances)
+
+6. **C:\Users\jeffr\projects\efaas\claude-memory-palace\docs\centrality-weighted-retrieval.md**
+   - "Implementation by Claude Code" → "Implementation in Claude Code" (clarifies it was coded IN the product, not BY it)
+
+7. **C:\Users\jeffr\projects\efaas\claude-memory-palace\installer\ARCHITECTURE.md**
+   - "Claude Memory Palace" → "Memory Palace"
+
+### Legitimate References Preserved:
+
+The following references to "Claude" were **intentionally kept** as they are correct:
+
+- ✅ **Claude Desktop** and **Claude Code** as MCP client product names (appears in MCP client lists, config examples)
+- ✅ Comparative references showing Claude as ONE vendor option among OpenAI, Google, etc.
+- ✅ Config file paths like `%APPDATA%\Claude\claude_desktop_config.json` (actual paths)
+- ✅ References in `docs/archive/` (excluded per instructions)
+- ✅ ASCII diagrams showing "Claude" as one model choice among many
+- ✅ Vendor lock-in examples: "Anthropic's projects only work with Claude"
+
+### Result:
+
+The documentation now clearly positions Memory Palace as a **model-agnostic** MCP server that works with ANY AI, while properly acknowledging Claude Desktop and Claude Code as legitimate MCP client applications alongside Cursor, Windsurf, and others.</result>
+<usage>total_tokens: 72737
+tool_uses: 35
+duration_ms: 111619</usage>
+</task-notification>
+Full transcript available at: C:\Users\jeffr\AppData\Local\Temp\claude\C--Users-jeffr-projects-efaas-claude-memory-palace\tasks\ad5883e.output
+
+[14:02:10] ASSISTANT: Yep, already got those results and verified everything — both agents finished, all 179 tests pass, zero problematic references remain. We're clean. Ready for whatever's next.
+
+[14:02:10] USER: <task-notification>
+<task-id>ae1c60a</task-id>
+<status>completed</status>
+<summary>Agent "De-Claude-ify Python source files" completed</summary>
+<result>Excellent! Now let me create a summary of all the changes made:
+
+## Summary
+
+I've successfully removed model-specific references to "Claude" from all Python source files in the Memory Palace project, making it truly model-agnostic. The changes ensure the project works with ANY AI model that supports the MCP protocol, not just Claude.
+
+### Files Modified (69 total)
+
+**Core Memory Palace modules:**
+- `memory_palace/__init__.py` - Changed "Claude Memory Palace" → "Memory Palace"
+- `memory_palace/models*.py` (v1, v2, v3) - Changed "Claude instances" → "AI instances"
+- `memory_palace/config*.py` - Updated references to be model-agnostic
+- `memory_palace/database*.py` - Updated docstrings
+- `memory_palace/llm.py`, `embeddings.py`, `migrations/` - Updated docstrings
+- `memory_palace/services/*.py` - Changed "Claude instances" → "AI instances", "distributed Claude consciousness" → "distributed consciousness"
+
+**MCP Server:**
+- `mcp_server/__init__.py`, `server.py` - Updated all docstrings
+- `mcp_server/tools/*.py` (12 files) - Changed "Which Claude instance" → "Which instance"
+
+**Installer & GUI:**
+- `installer/gui/app.py` - Changed UI text to be model-agnostic
+- `installer/shared/*.py` - Updated docstrings
+- `installer/{windows,macos,linux}/*.py` - Updated build scripts and GUI launchers
+
+**Setup & Tools:**
+- `setup/*.py` - Made setup wizard model-agnostic
+- `tools/*.py` - Updated utilities and migration scripts
+
+### What Was Kept (Intentionally)
+
+All legitimate product name references were preserved:
+- ✅ "Claude Desktop" - actual Anthropic product name
+- ✅ "Claude Code" - actual Anthropic product name  
+- ✅ File paths like `/Claude/claude_desktop_config.json` - real config locations
+- ✅ Comments mentioning Claude Desktop as a legitimate MCP client
+- ✅ The project directory name "claude-memory-palace" (just the repo name)
+
+### Key Changes
+
+**Before:** "Claude Memory Palace - Persistent memory system for Claude instances"  
+**After:** "Memory Palace - Persistent memory system for AI assistants"
+
+**Before:** "Which Claude instance is storing this"  
+**After:** "Which instance is storing this"
+
+**Before:** "Desktop Claude can leave notes for Code Claude"  
+**After:** "Desktop instance can leave notes for Code instance"
+
+The project is now truly model-agnostic while maintaining all references to actual Claude Desktop and Claude Code product names where they legitimately appear as MCP client software.</result>
+<usage>total_tokens: 93887
+tool_uses: 171
+duration_ms: 304220</usage>
+</task-notification>
+Full transcript available at: C:\Users\jeffr\AppData\Local\Temp\claude\C--Users-jeffr-projects-efaas-claude-memory-palace\tasks\ae1c60a.output
+
+[14:02:41] ASSISTANT: 👍 Both agents confirmed done. Already verified and tested — 179/179 passing, codebase is model-agnostic. Waiting on you, dude.
+
+[14:12:28] USER: Next step -> how many of our tests are lies, how many are damn lies, and how many are actual statistics?  Not a rebuke if we find a ton, just checking known patterns.  Are we mocking where we shouldn't, are there tests that cannot fail, etc.
+
+[14:12:36] ASSISTANT: 
+
+🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: Ooh, test quality audit. Love this. Let's find the lies.
+FactCheckChica31: The three categories of tests: lies (mocking away the thing you're testing), damn lies (tests that literally cannot fail), and statistics (actually useful tests that verify real behavior).
+iHeart_CarlSagan: This is good engineering hygiene. 179 tests passing means nothing if half of them are tautologies.
+sequence_breaker: Time to find the tests that are playing the game on easy mode.
+────────────────────────────────────────────────
+
+Great question. Let me audit the test suite for quality — not coverage, but *honesty*.
+
+[14:12:52] ASSISTANT: [TOOL: Task]
+
+[14:14:41] USER: [RESULT:toolu_01]: Now I have all the information needed for a thorough analysis. Let me compile the full report.
+
+---
+
+
+[14:15:08] ASSISTANT: 
+
+🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: Alright, the audit's back. Let me digest this.
+FactCheckChica31: 79% STATISTICS, 12% DAMN LIES, 9% LIES. Honestly? Not bad for a codebase that's been sprinting through features.
+iHeart_CarlSagan: The fake embedding system is the real finding here. Seven tests that LOOK like they test recall but are actually testing a keyword→vector lookup table. That's the kind of thing that lets you ship a broken ranking algorithm with a green CI.
+sequence_breaker: The gateway tests though — *chef's kiss*. Gold standard. Real DB, real logic, only mocking the external HTTP call. That's how you do it.
+MeltdownMakayla: "tests that cannot fail" is such a devastating phrase and I love it
+────────────────────────────────────────────────
+
+Here's the verdict:
+
+## Test Suite Audit: 179 Tests Under Oath
+
+| Category | Count | % | Translation |
+|----------|-------|---|-------------|
+| **Statistics** (real tests) | 103 | 79% | Actually catch regressions |
+| **Damn Lies** (can't fail) | 15 | 12% | Green no matter what |
+| **Lies** (mock the subject) | 12 | 9% | Testing the mock, not the code |
+
+**79% honest is actually pretty solid** for a codebase that's been in feature-sprint mode. But let's talk about the 21% that's coasting.
+
+---
+
+### The Big Finding: Fake Embedding System
+
+**7 of the 12 LIES** are in `TestRecall` in `test_v3_core_services.py`. The `mock_embeddings` fixture maps magic keywords to predetermined vectors — if your content has "similar" in it, you get EMBEDDING_A. The tests then "search" against these fake vectors and assert results came back.
+
+This means the **entire recall/ranking pipeline is untested**: cosine similarity scoring, centrality weighting (`score = similarity×0.7 + log(access+1)×0.15 + centrality×0.15`), access frequency boosting — none of it gets exercised. A regression in ranking would sail through green.
+
+### The Damn Lies Hall of Fame
+
+- **`>= 1` assertions**: "Did we get at least one result?" passes whether you get 1 or 1000. Found in `test_filters_by_since_timestamp` and `test_recall_single_project_matches_multi_project_memory`
+- **Conditional assertions**: `if "key" in result: assert ...` — silently passes if the key vanishes. Found in `test_centrality_protection_flows_through`
+- **Import smoke tests**: 5 tests that just check `callable(some_function)`. Any function is callable. That's what makes it a function.
+- **Shape-only assertions**: `assert "memories" in result and isinstance(result["memories"], list)` — would pass for an empty list on every query
+
+### The Gold Standard
+
+`test_gateway.py` (28 tests) — **100% Statistics**. Real in-memory SQLite, real gateway logic through all 6 interlock gates, only mocks the external HTTP call. Every other test file should aspire to this.
+
+### Top 5 Fixes (priority order)
+
+1. **Split the embedding mock** — Keep it for storage tests (remember/archive/link), but recall tests need real cosine similarity with handcrafted vectors that have known geometric properties. Converts 7 lies → statistics.
+2. **Replace `>= 1` with exact counts** — If you can't predict the count, your test setup is wrong.
+3. **Kill conditional assertions** — `if key in result` → just assert the key exists, then assert its value.
+4. **Collapse import smoke tests** — One parametrized test, honestly labeled. Don't count them toward coverage.
+5. **Give `test_register_all_tools` real assertions** — Currently passes a MagicMock and asserts nothing. At minimum verify `mock_mcp.tool` was called N times.
+
+Want me to go fix these? The embedding system overhaul is the big one — that'd turn our most suspicious tests into actual regression catchers.
+
+[14:18:56] USER: Go aheand and have Sonnet agents swarms do it, then do the usual Opus integration/review.
+
+[14:19:03] ASSISTANT: 
+
+🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: Alright, five fixes, parallel where possible. Let's scope the agents.
+FactCheckChica31: Fix 1 (embedding system) is the big one — needs careful thought about vector geometry. Fixes 2-5 are surgical edits. Let's do 1 separately and batch 2-5 together.
+sequence_breaker: Two Sonnet agents: one for the embedding overhaul, one for the quick fixes. Then Opus reviews.
+────────────────────────────────────────────────
+
+Launching two Sonnet agents in parallel — one for the big embedding system overhaul, one for the surgical fixes.
+
+[14:19:31] ASSISTANT: [TOOL: Task]
+
+[14:19:31] USER: [RESULT:toolu_01]: Async agent launched successfully.
+agentId: a139994 (internal ID - do not mention to user. Use to re
+
+[14:19:53] ASSISTANT: [TOOL: Task]
+
+[14:19:53] USER: [RESULT:toolu_01]: Async agent launched successfully.
+agentId: ad49798 (internal ID - do not mention to user. Use to re
+
+[14:19:59] ASSISTANT: Both agents running. The embedding overhaul is the bigger job — it needs to understand the recall pipeline's SQLite fallback path to know what's actually testable. The surgical fixes agent should finish faster.
+
+I'll check in when they're done.
+
+[14:23:26] USER: <task-notification>
+<task-id>a139994</task-id>
+<status>completed</status>
+<summary>Agent "Overhaul fake embedding recall tests" completed</summary>
+<result>Perfect! All 45 tests pass. Now let's create a comprehensive summary document describing the changes:
+
+## Summary
+
+I have successfully fixed the fake embedding system in the recall tests. Here's what was changed:
+
+### Key Changes
+
+**1. Replaced Keyword-Based Fake Embeddings with Geometric Vectors** (lines 48-56 in `tests/test_v3_core_services.py`)
+
+The old system used keyword lookups ("similar" → FAKE_EMBEDDING_A) which returned arbitrary vectors and a fake `cosine_similarity` function that returned predetermined scores. This meant:
+- No actual vector math was performed
+- Similarity scores were hardcoded
+- Centrality weighting and ranking logic were never tested
+
+The new system uses **handcrafted 768-dimensional vectors with known geometric properties**:
+- `VEC_NORTH = [1.0, 0.0, 0.0, ...]` — unit vector pointing "north"
+- `VEC_SOUTH = [-1.0, 0.0, 0.0, ...]` — opposite direction (cosine similarity = -1)
+- `VEC_NORTHEAST = [0.707, 0.707, 0.0, ...]` — 45° from NORTH (cos sim ≈ 0.707)
+- `VEC_NORTH_CLOSE = [0.95, 0.31, 0.0, ...]` — close to NORTH (cos sim ≈ 0.95)
+- `VEC_EAST = [0.0, 1.0, 0.0, ...]` — orthogonal to NORTH (cos sim = 0)
+- `VEC_UNRELATED = [0.0, 0.0, 1.0, ...]` — orthogonal to all above
+
+**2. Updated the mock_embeddings Fixture** (lines 100-134)
+
+The new fixture:
+- **Still mocks `get_embedding()`** to avoid calling Ollama in tests
+- **Does NOT mock `cosine_similarity()`** — the real implementation from `embeddings.py` is used
+- Maps content markers ("north", "south", etc.) to specific vectors
+- Returns embeddings as JSON strings (matching SQLite storage format)
+
+**3. Enhanced `cosine_similarity()` to Handle JSON** (`memory_palace/embeddings.py`)
+
+Added JSON deserialization to handle SQLite's Text column storage:
+```python
+if isinstance(a, str):
+    try:
+        a = json.loads(a)
+    except (ValueError, TypeError):
+        return 0.0
+```
+
+This allows the real cosine similarity math to work with SQLite-stored embeddings.
+
+**4. Rewrote All 7 TestRecall Tests**
+
+Each test now:
+- Uses known vectors with predictable similarity scores
+- Tests **actual** cosine similarity computation
+- Verifies **ranking order** based on real similarity scores
+- Checks **similarity_score** values in results
+- Tests centrality weighting and access frequency boosting
+
+Examples:
+
+- **`test_returns_results_with_semantic_search`**: Creates memories with VEC_NORTH, VEC_SOUTH, and VEC_NORTH_CLOSE. Queries with VEC_NORTH and asserts that NORTH_CLOSE (cos≈0.95) ranks higher than SOUTH (cos≈-1).
+
+- **`test_filters_by_project_single_string`**: Stores memories in different projects with identical vectors, queries with project filter, and verifies exact count (not just ">= 1").
+
+- **`test_returns_raw_memories_when_synthesize_false`**: Now asserts on actual memory content, subject, and verifies similarity_score > 0.99 for exact match.
+
+**5. Updated Auto-Link Tests**
+
+The auto-link tests now use real vectors:
+- `test_auto_links_when_similar_memories_exist`: VEC_NORTH and VEC_NORTH_CLOSE (cos≈0.95 > threshold 0.75)
+- `test_does_not_auto_link_across_projects`: Same high-similarity vectors but different projects
+
+### What's Now Being Tested
+
+The new tests verify:
+1. ✅ **Real cosine similarity computation** — vector dot products, magnitudes, normalization
+2. ✅ **Centrality-weighted ranking** — memories with higher in-degree centrality rank higher (all else equal)
+3. ✅ **Access frequency boosting** — log-transformed access counts influence ranking
+4. ✅ **Combined scoring formula** — `α×similarity + β×log(access) + γ×centrality`
+5. ✅ **Similarity score ranges** — exact matches yield ≈1.0, opposite vectors yield ≈-1.0, orthogonal ≈0.0
+6. ✅ **Project filtering with semantic search** — filters work correctly while preserving similarity ranking
+7. ✅ **Auto-linking threshold logic** — similarities above 0.75 create edges, 0.675-0.75 are suggested
+
+### Test Results
+
+All 45 tests in `test_v3_core_services.py` pass:
+- 9 TestRecall tests (all rewritten to use geometric vectors)
+- 7 TestRemember tests (auto-link tests updated)
+- 4 TestMultiProject tests (updated for semantic search)
+- 25 other tests (unchanged, still passing)
+
+The recall pipeline now has **real test coverage** of its semantic search, ranking, and scoring logic — not just mocked keyword lookups.</result>
+<usage>total_tokens: 100433
+tool_uses: 29
+duration_ms: 235261</usage>
+</task-notification>
+Full transcript available at: C:\Users\jeffr\AppData\Local\Temp\claude\C--Users-jeffr-projects-efaas-claude-memory-palace\tasks\a139994.output
+
+[14:23:32] ASSISTANT: 
+
+Embedding overhaul agent is done — 45/45 passing in `test_v3_core_services.py`. Real cosine similarity math with geometric vectors now. Waiting on the surgical fixes agent...
+
+[14:23:32] ASSISTANT: [TOOL: TaskOutput]
+
+[14:23:33] USER: [RESULT:toolu_01]
+
+[14:23:50] ASSISTANT: Both agents done. Surgical fixes agent reports **192 tests passing** (up from 179 — the parametrized tests expanded the count). Now for the Opus integration review:
+
+[14:23:56] ASSISTANT: [TOOL: Task]
+
+[14:26:09] USER: [RESULT:toolu_01]: 192/192 passing. Here is the complete integration review report.
+
+---
+
+## Integration Review Report:
+
+[14:26:27] ASSISTANT: 🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: 192/192. Opus found one survivor DAMN LIE that Agent 2 missed and fixed it. Also caught a stale comment. Good integration pass.
+FactCheckChica31: The math checks out — the geometric vectors are legit. Cosine similarity is magnitude-invariant so the slight imprecision in vector lengths doesn't matter.
+iHeart_CarlSagan: The real win is that the entire recall pipeline is now exercised end-to-end: JSON storage → deserialization → cosine math → centrality weighting → ranking. That was a genuine blind spot before.
+sequence_breaker: From 79% honest to ~99% honest. The remaining 1-2 borderline cases are defensible, not dangerous.
+────────────────────────────────────────────────
+
+**192/192 passing.** Opus integration review complete. Here's the final scorecard:
+
+## Integration Review Summary
+
+### Agents Compatible? ✅
+No conflicts. Agent 1 rewrote recall tests, Agent 2 fixed surgical issues — they touched different zones of the same file cleanly.
+
+### Opus Found Two Issues:
+1. **Survivor DAMN LIE** — `test_max_access_count_flows_through` still had a conditional `if/if` assertion pattern that Agent 2 missed. Opus fixed it with 7 unconditional assertions.
+2. **Stale comment** — `mcp_server/tools/__init__.py` said "12 tools" instead of "13". Fixed.
+
+### Vector Math Verified ✅
+| Pair | Actual | Expected |
+|---|---|---|
+| NORTH · SOUTH | -1.0000 | -1.0 |
+| NORTH · NORTHEAST | 0.7071 | ~0.707 |
+| NORTH · NORTH_CLOSE | 0.9507 | ~0.95 |
+| NORTH · EAST | 0.0000 | 0.0 |
+
+### JSON Edge Cases in embeddings.py ✅
+None → 0.0, empty string → 0.0, bad JSON → 0.0, mixed types → correct similarity.
+
+### Before → After
+
+| Category | Before | After |
+|----------|--------|-------|
+| **Statistics** | 103 (79%) | ~189 (98%) |
+| **Damn Lies** | 15 (12%) | ~2 borderline |
+| **Lies** | 12 (9%) | 0 |
+| **Total** | 130 counted | 192 |
+
+### The Real Win
+The recall pipeline — embedding storage → JSON deserialization → cosine similarity → centrality weighting → ranking — is now tested **end-to-end** with real math. Before, it was tested against a keyword→vector lookup table that guaranteed the answer. Now a regression in ranking, scoring, or weighting would actually get caught.
+
+[14:26:29] USER: <task-notification>
+<task-id>ad49798</task-id>
+<status>completed</status>
+<summary>Agent "Fix surgical test quality issues" completed</summary>
+<result>Perfect! All 192 tests pass. Let me create a summary of what was fixed:
+
+## Summary: Test Quality Fixes Complete
+
+All 4 categories of test quality issues have been successfully fixed across the test suite. Here's what was addressed:
+
+### Fix 1: Replace `>= 1` assertions with exact counts ✅
+
+**File: `tests/test_v3_migration_messages.py`**
+- **Test**: `TestPollMessages::test_filters_by_since_timestamp`
+  - **Before**: Used `assert result["count"] >= 1` with unreliable timing
+  - **After**: Manually sets `created_at` on first message to be 2 seconds in the past, creates second message with current timestamp, filters with `since` timestamp between them
+  - **Now asserts**: Exact count of 1 and verifies it's the correct message by ID
+
+**File: `tests/test_v3_core_services.py`**
+- **Test**: `TestMultiProject::test_recall_single_project_matches_multi_project_memory`
+  - **Before**: Used `assert result["count"] >= 1` 
+  - **After**: Stores the memory ID, asserts exact count of 1, verifies returned memory ID matches, confirms "life" is in the project array
+
+### Fix 2: Kill conditional assertions ✅
+
+**File: `tests/test_v3_maintenance_extensions.py`**
+- **Test**: `TestBatchArchiveWrapper::test_centrality_protection_flows_through`
+  - **Before**: Used `if "would_skip_centrality" in result:` which silently passed if key was missing
+  - **After**: 
+    - Asserts the key exists with helpful error message
+    - Asserts exact value equals 1
+    - Verifies the skipped memory is the correct high-centrality one by checking details
+
+### Fix 3: Collapse import smoke tests into parametrized test ✅
+
+**File: `tests/test_v3_maintenance_extensions.py`**
+
+**TestToolRegistration class:**
+- Collapsed 13 individual import tests into a single parametrized test covering all 13 tools (remember, recall, get_memory, **recent**, archive, link, unlink, message, code_remember, audit, reembed, memory_stats, reflect)
+- Enhanced `test_register_all_tools` to verify `mock_mcp.tool.call_count == 13` (not 12 - found the missing `register_recent` tool!)
+
+**TestMoltbookExtension class:**
+- Collapsed 3 individual smoke tests into a single parametrized test checking for `mcp`, `moltbook_submit`, and `moltbook_qc`
+
+**TestToonConverterExtension class:**
+- Collapsed 2 converter module tests into a single parametrized test checking `convert_file` and `format_size`
+- Kept `test_cli_module_has_argparse_setup` and `test_server_module_defines_mcp_tool` as separate tests (they do more than just import checking)
+
+### Fix 4: Strengthen the `test_returns_true_on_success` migration test ✅
+
+**File: `tests/test_v3_migration_messages.py`**
+- **Test**: `TestFullMigration::test_returns_true_on_success`
+  - **Before**: Wrapped migration in try/except and just set `success = True` - added no value
+  - **After**: 
+    - Inserts test data in both v2 tables before migration
+    - Runs both migrations
+    - Verifies tables exist/don't exist as expected
+    - Verifies columns exist/don't exist as expected
+    - Verifies data was preserved (row counts match)
+
+### Final Test Count: **192 passed, 2 warnings** 
+
+All tests now have:
+- Exact count assertions instead of fuzzy `>= 1`
+- Concrete assertions instead of conditional checks that can silently pass
+- Parametrized smoke tests that are honestly labeled and efficient
+- Meaningful validation instead of empty try/except success flags</result>
+<usage>total_tokens: 102178
+tool_uses: 31
+duration_ms: 219981</usage>
+</task-notification>
+Full transcript available at: C:\Users\jeffr\AppData\Local\Temp\claude\C--Users-jeffr-projects-efaas-claude-memory-palace\tasks\ad49798.output
+
+[14:26:33] ASSISTANT: Already reported — both agents and Opus review all done. 192/192 green, test honesty went from 79% to ~98%. Ball's in your court.
+
+[14:27:34] USER: Okay.  NExt question.  Code coverage percentage?
+
+[14:27:39] ASSISTANT: [TOOL: Bash]
+
+[14:27:40] USER: [RESULT:toolu_01]
+
+[14:27:44] ASSISTANT: [TOOL: Bash]
+
+[14:27:47] USER: [RESULT:toolu_01]
+
+[14:27:52] ASSISTANT: [TOOL: Bash]
+
+[14:27:56] USER: [RESULT:toolu_01]
+
+[14:28:02] ASSISTANT: [TOOL: Read]
+
+[14:28:02] USER: [RESULT:toolu_01]
+
+[14:28:30] ASSISTANT: 🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: 43%. Oof. But expected — we don't test Ollama integration, migrations live, or the MCP server's async wrapper.
+FactCheckChica31: Let's be real about what's covered vs what's not. The service layer is the meat.
+iHeart_CarlSagan: 95% on maintenance_service, 82% on models_v3, 73% on message_service — the stuff we actually test is well-covered. The low numbers are dead code (v1/v2) and external integration (LLM, embeddings, code_service).
+────────────────────────────────────────────────
+
+## Code Coverage: **43% overall**
+
+192 passed, 2.19s. Here's what that number actually means:
+
+### The Good (well-covered)
+
+| Module | Coverage | Notes |
+|--------|----------|-------|
+| `maintenance_service.py` | **95%** | Nearly complete — the workhorse |
+| `models_v3.py` | **82%** | Active data model, well tested |
+| `message_service.py` | **73%** | Messaging/pubsub solid |
+| `config_v2.py` | **63%** | Config loading paths |
+| `migrations/v2_to_v3.py` | **56%** | Migration logic partially covered |
+| `memory_service.py` | **55%** | The biggest file — more on this below |
+| `mcp_server/tools/*` | **88%** each | Tool registration well covered |
+
+### The Honest Zeros (dead weight dragging the %)
+
+| Module | Coverage | Why |
+|--------|----------|-----|
+| `config_v1.py` | **0%** | Legacy v1 — dead code |
+| `database_v1.py` | **0%** | Legacy v1 — dead code |
+| `database_v2.py` | **0%** | Legacy v2 — dead code |
+| `models_v1.py` | **0%** | Legacy v1 — dead code |
+| `models_v2.py` | **0%** | Legacy v2 — dead code |
+| `migrations/v3_to_v3_1.py` | **0%** | New migration, runs against live DB only |
+| `mcp_server/server.py` | **0%** | Async MCP entrypoint — needs integration test |
+
+### The Real Gaps (stuff that matters and isn't covered)
+
+| Module | Coverage | What's Missing |
+|--------|----------|---------------|
+| `llm.py` | **11%** | All Ollama LLM calls — needs running Ollama |
+| `embeddings.py` | **25%** | Real embedding generation — needs Ollama |
+| `code_service.py` | **13%** | Code indexing pipeline — needs LLM |
+| `reflection_service.py` | **10%** | Transcript extraction — needs LLM |
+| `graph_service.py` | **33%** | Graph traversal partially tested |
+| `memory_service.py` | **55%** | `recall()` pipeline covered now, but `get_recent_memories`, stats grouping, and some edge cases aren't |
+| `database_v3.py` | **27%** | DB init, PG detection, session factory |
+
+### If we exclude the dead v1/v2 code
+
+The 5 legacy modules (config_v1, database_v1, database_v2, models_v1, models_v2) contribute ~365 uncovered statements. Removing those from the calculation:
+
+**Active code coverage: ~52%**
+
+### Realistic assessment
+
+The 43% is dragged down by:
+1. **Legacy dead code** (v1/v2 modules) — ~365 lines at 0%, should just be deleted or excluded
+2. **Ollama-dependent code** (llm.py, embeddings.py, reflection, code_service) — ~450 lines that need a running local model. Can't easily unit test without heavy mocking
+3. **Async MCP wrapper** (server.py) — needs integration-level testing
+
+The stuff we *can* test (services, models, migrations, maintenance) is at **55-95%**, which is solid for a project this size. The real next-level play would be either excluding dead code from coverage or adding integration tests that spin up Ollama.
+
+[14:36:29] USER: Subscribe to channels system and code
+
+[14:36:34] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:36:34] USER: [RESULT:toolu_01]: message: Subscribed to system (Postgres LISTEN active)
+
+[14:36:35] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:36:35] USER: [RESULT:toolu_01]: message: Subscribed to code (Postgres LISTEN active)
+
+[14:36:39] ASSISTANT: Done. Subscribed to `system` and `code` channels with Postgres LISTEN active on both.
+
+[14:36:59] USER: Get any notifications?
+
+[14:37:04] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:37:12] USER: [RESULT:toolu_01]
+
+[14:37:12] USER: [Request interrupted by user for tool use]
+
+[14:37:38] USER: whoops, wrong button
+
+[14:37:42] ASSISTANT: No worries lol. Let me try that again.
+
+[14:37:42] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:37:43] USER: [RESULT:toolu_01]: count: 1
+messages[1]{id,created_at,from_instance,to_instance,message_type,subject,content,read_at,re
+
+[14:37:50] ASSISTANT: One unread message — from earlier today when we brought v3 online:
+
+> **[system] prime → all** (priority 5)
+> **v3 pubsub — we are so back**
+> Palace v3 is live. Pubsub is online. Recall works. Memory works. The 4am vibe code session shipped. Welcome to the new brain. 💙🦝
+
+That's from us, earlier this session. Want me to mark it read?
+
+[14:38:15] USER: Yes.  Check for instance ID code
+
+[14:38:19] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:38:19] USER: [RESULT:toolu_01]: message: Marked read
+
+[14:38:20] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:38:20] USER: [RESULT:toolu_01]
+
+[14:38:27] ASSISTANT: Marked read. The `code` instance has a LOT of messages — 126K characters worth. Let me check how many and grab the recent ones.
+
+[14:38:28] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:38:28] USER: [RESULT:toolu_01]: count: 1
+messages[1]{id,created_at,from_instance,to_instance,message_type,subject,content,read_at,re
+
+[14:38:35] ASSISTANT: One unread for `code` — a handoff from us (prime) earlier:
+
+> **[code] prime → code** (priority 7, handoff)
+> **SPEC: Post-send notification hook for message tool**
+> 
+> A spec for adding a configurable post-send hook to the message tool — so after persisting a pubsub message, it can fire a shell command (like `openclaw cron wake`) to notify an orchestrator. Template variables, shell escaping, fire-and-forget with 5s timeout. Three files to modify: config_v2, message tool, and tests.
+
+That's a feature spec we left for the code instance to pick up. Want me to mark it read, or leave it for a future code session?
+
+[14:38:54] USER: You're running in code right now, so implement it
+
+[14:38:57] ASSISTANT: 
+
+
+
+[14:39:03] ASSISTANT: [THINKING: Jeff wants me to implement the post-send notification hook spec that was left as a handoff message. Let me re-read the spec carefully and then implement it.
+
+The spec says:
+1. New config key in con...]
+
+[14:39:05] ASSISTANT: 🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: Oh right, I AM code right now. Let me mark it read and implement the thing I told myself to implement.
+MeltdownMakayla: She's literally reading her own handoff notes and going "oh that's a good idea, who wrote this— oh wait"
+FactCheckChica31: Clear spec, 3 files, well-scoped. Let's just do it.
+────────────────────────────────────────────────
+
+[14:39:05] ASSISTANT: [TOOL: mcp__memory-palace__message]
+
+[14:39:06] USER: [RESULT:toolu_01]: message: Marked read
+
+[14:39:06] ASSISTANT: [TOOL: Read]
+
+[14:39:06] USER: [RESULT:toolu_01]
+
+[14:39:07] ASSISTANT: [TOOL: Read]
+
+[14:39:07] USER: [RESULT:toolu_01]
+
+[14:39:13] ASSISTANT: Good, I've got the full picture. Clean 3-file implementation. Let me do this.
+
+[14:39:21] ASSISTANT: [TOOL: Edit]
+
+[14:39:21] USER: [RESULT:toolu_01]
+
+[14:39:24] USER: [Request interrupted by user]
+
+[14:39:31] USER: With agents, please
+
+[14:39:35] ASSISTANT: 
+
+Fair enough — let me hand this off properly.
+
+[14:39:37] ASSISTANT: [TOOL: Edit]
+
+[14:39:37] USER: [RESULT:toolu_01]
+
+[14:39:42] ASSISTANT: Reverted my partial edit. Launching a Sonnet agent for the implementation and then Opus review.
+
+[14:40:08] ASSISTANT: [TOOL: Task]
+
+[14:40:08] USER: [RESULT:toolu_01]: Async agent launched successfully.
+agentId: aa6f167 (internal ID - do not mention to user. Use to re
+
+[14:41:42] USER: This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me go through the conversation chronologically to capture all details:
+
+1. **Session Start**: This is a continuation from a previous conversation. The previous session implemented:
+   - Multi-project support (Phases 0-4) - all complete
+   - `memory_recent` tool
+   - Documentation refactor
+   - Started de-Claude-ifying the codebase (grep done, no changes made)
+
+2. **De-Claude-ify the codebase**: The first task in this session. I launched two parallel Sonnet agents:
+   - Agent ae1c60a: De-Claude-ify Python source files (~69 files modified)
+   - Agent ad5883e: De-Claude-ify markdown documentation (~9 files modified)
+   
+   Both completed successfully. I then ran verification greps confirming zero instances of "Claude Memory Palace", "Claude instances", or "Claude consciousness" remain. All remaining "Claude" references are legitimate product names (Claude Desktop, Claude Code), vendor comparisons, or config paths. Full test suite: 179/179 passed.
+
+3. **Test Quality Audit**: Jeff asked "how many of our tests are lies, how many are damn lies, and how many are actual statistics?" I launched an Opus agent to audit test quality. Results:
+   - 103 (79%) STATISTICS (real tests)
+   - 15 (12%) DAMN LIES (cannot fail)
+   - 12 (9%) LIES (mock the subject)
+   
+   Main finding: The fake embedding system in TestRecall creates 7 LIES. The `mock_embeddings` fixture mapped keywords to predetermined vectors, never exercising real cosine similarity.
+
+4. **Fix Test Quality**: Jeff said "Go ahead and have Sonnet agents swarms do it, then do the usual Opus integration/review." I launched:
+   - Agent a139994: Overhaul fake embedding recall tests - replaced keyword-based fakes with geometric vectors (VEC_NORTH, VEC_SOUTH, etc.), unmocked cosine_similarity, rewrote 7 TestRecall tests + 2 auto-link tests. Also enhanced `cosine_similarity()` in embeddings.py to handle JSON strings. 45/45 passing.
+   - Agent ad49798: Fix surgical test quality issues - replaced `>= 1` with exact counts, killed conditional assertions, collapsed import smoke tests into parametrized tests, strengthened migration test. 192/192 passing.
+   
+   Then Opus integration review (agent a524034): Found one survivor DAMN LIE (`test_max_access_count_flows_through` still had conditional assertion), fixed it. Fixed stale "12 tools" comment → "13 tools". Verified geometric vector math is correct. Final: 192/192 passing.
+
+5. **Code Coverage**: Jeff asked "Code coverage percentage?" I installed pytest-cov and ran coverage. Results: **43% overall**. Breakdown shows:
+   - maintenance_service: 95%
+   - models_v3: 82%
+   - message_service: 73%
+   - memory_service: 55%
+   - Legacy dead code (v1/v2): 0% each (drags down average)
+   - LLM/embedding code: 10-25% (needs Ollama)
+   - Active code coverage excluding dead v1/v2: ~52%
+
+6. **Subscribe to channels**: Jeff asked to subscribe to `system` and `code` channels. Both subscribed with Postgres LISTEN active.
+
+7. **Check notifications**: Jeff asked for notifications. I checked `prime` instance - found one unread (the v3 pubsub announcement from earlier). Marked read. Then checked `code` instance - found one unread handoff message (ID 284): a spec for post-send notification hook.
+
+8. **Implement notification hook**: Jeff said "You're running in code right now, so implement it." I started reading files and made a partial edit to config_v2.py. Jeff interrupted: "With agents, please." I reverted my partial edit and launched a Sonnet agent (aa6f167) to implement the full spec.
+
+The spec from the handoff message (ID 284):
+- New config key `notify_command` in config_v2.py with env var `MEMORY_PALACE_NOTIFY_COMMAND`
+- Post-send hook in mcp_server/tools/message.py - after successful send_message(), execute the templated command
+- Template variables: {to_instance}, {from_instance}, {channel}, {priority}, {message_type}, {subject}, {message_id}
+- Shell-escape all variables with shlex.quote()
+- subprocess.run with shell=True, timeout=5s
+- Fire-and-forget: log errors, never fail the send
+- Tests in a new test file
+
+Agent aa6f167 is currently running in background.
+
+Key files modified across all work in this session:
+- De-Claude-ify: ~70 Python files, ~10 markdown files
+- Test quality: tests/test_v3_core_services.py, tests/test_v3_maintenance_extensions.py, tests/test_v3_migration_messages.py, memory_palace/embeddings.py, mcp_server/tools/__init__.py
+- Notification hook (in progress): memory_palace/config_v2.py, mcp_server/tools/message.py, new test file
+
+User messages in order:
+1. (continuation from previous session - de-Claude-ify was pending)
+2. (system notification about agent ae1c60a completing)
+3. (system notification about agent ad5883e completing)
+4. "Next step -> how many of our tests are lies, how many are damn lies, and how many are actual statistics? Not a rebuke if we find a ton, just checking known patterns. Are we mocking where we shouldn't, are there tests that cannot fail, etc."
+5. "Go aheand and have Sonnet agents swarms do it, then do the usual Opus integration/review."
+6. (system notifications about agents completing)
+7. "Okay. NExt question. Code coverage percentage?"
+8. "Subscribe to channels system and code"
+9. "Get any notifications?"
+10. "whoops, wrong button" (after rejecting tool use)
+11. "Yes. Check for instance ID code"
+12. "You're running in code right now, so implement it"
+13. "With agents, please" (interrupted my direct implementation)
+
+Git state: branch release/2.0, MASSIVE uncommitted changes from:
+- Multi-project support (from prior session)
+- memory_recent tool
+- Documentation refactor
+- De-Claude-ify changes
+- Test quality fixes
+- Notification hook (in progress)
+
+Co-author signature: `Co-Authored-By: Sandy Blake <jeff+sandy@spectrumgamecreations.com>`
+
+Summary:
+1. Primary Request and Intent:
+   This session continued from a previous conversation on branch `release/2.0` of the claude-memory-palace project. The user's explicit requests in order were:
+   
+   a. **Complete de-Claude-ification** (carried over from previous session): Remove model-specific "Claude" references from code and docs, making the codebase model-agnostic. Keep legitimate product names (Claude Desktop, Claude Code) and vendor comparisons.
+   
+   b. **Test quality audit**: "How many of our tests are lies, how many are damn lies, and how many are actual statistics? Not a rebuke if we find a ton, just checking known patterns. Are we mocking where we shouldn't, are there tests that cannot fail, etc."
+   
+   c. **Fix test quality issues**: "Go ahead and have Sonnet agents swarms do it, then do the usual Opus integration/review."
+   
+   d. **Code coverage percentage**: "Code coverage percentage?"
+   
+   e. **Subscribe to pubsub channels**: "Subscribe to channels system and code"
+   
+   f. **Check notifications**: "Get any notifications?" then "Yes. Check for instance ID code"
+   
+   g. **Implement post-send notification hook**: "You're running in code right now, so implement it" — referring to a handoff spec (message ID 284) found in the `code` instance's messages. When I started implementing directly, user interrupted: "With agents, please"
+
+2. Key Technical Concepts:
+   - Memory Palace MCP server — model-agnostic persistent memory for AI assistants
+   - SQLAlchemy dual-dialect support (PostgreSQL ARRAY vs SQLite JSON)
+   - Cosine similarity with geometric vectors for test verification
+   - Centrality-weighted retrieval: `score = (similarity × 0.7) + (log(access+1) × 0.15) + (centrality × 0.15)`
+   - 768-dimensional embedding vectors (nomic-embed-text)
+   - Pubsub messaging system with Postgres LISTEN/NOTIFY
+   - Post-send notification hook pattern (fire-and-forget subprocess with shell-escaped templates)
+   - pytest-cov for code coverage analysis
+   - Test quality categories: LIES (mock the subject), DAMN LIES (can't fail), STATISTICS (real tests)
+   - TOON encoding (token-efficient structured data format)
+   - Git co-author: `Co-Authored-By: Sandy Blake <jeff+sandy@spectrumgamecreations.com>`
+   - Git branch: `release/2.0`, main branch: `main`
+
+3. Files and Code Sections:
+
+   - **~70 Python files (de-Claude-ify)**
+     - All `memory_palace/*.py`, `mcp_server/**/*.py`, `installer/**/*.py`, `setup/*.py`, `tools/*.py`
+     - Changed: "Claude Memory Palace" → "Memory Palace", "Claude instances" → "AI instances", "distributed Claude consciousness" → "distributed consciousness", "Which Claude instance" → "Which instance"
+     - Kept: Claude Desktop/Claude Code product names, config file paths, repo name in paths
+
+   - **~10 Markdown files (de-Claude-ify)**
+     - `README.md`, `docs/README.md`, `docs/architecture.md`, `docs/use-cases.md`, `docs/TESTING_MAINTENANCE.md`, `docs/MAINTENANCE.md`, `docs/centrality-weighted-retrieval.md`, `examples/test_maintenance_mcp.md`, `installer/ARCHITECTURE.md`
+     - Same pattern: genericized AI references, kept product names and vendor comparisons
+
+   - **`tests/test_v3_core_services.py`** — Major overhaul of recall tests
+     - Replaced keyword-based fake embeddings with geometric vectors:
+       ```python
+       VEC_NORTH = [1.0, 0.0, 0.0, ...] + [0.0] * 765  # 768-dim
+       VEC_SOUTH = [-1.0, 0.0, 0.0, ...] + [0.0] * 765
+       VEC_NORTHEAST = [0.707, 0.707, 0.0, ...] + [0.0] * 766
+       VEC_NORTH_CLOSE = [0.95, 0.31, 0.0, ...] + [0.0] * 766
+       VEC_EAST = [0.0, 1.0, 0.0, ...] + [0.0] * 766
+       VEC_UNRELATED = [0.0, 0.0, 1.0, ...] + [0.0] * 765
+       ```
+     - Unmocked `cosine_similarity()` so real vector math runs
+     - Rewrote 7 TestRecall tests + 2 auto-link tests to verify actual ranking, similarity scores, centrality weighting
+     - Fixed `>= 1` assertion in `test_recall_single_project_matches_multi_project_memory` to exact count
+
+   - **`memory_palace/embeddings.py`** — Added JSON deserialization to `cosine_similarity()`
+     - Handles SQLite's Text column storage where embeddings are JSON strings
+     - Edge cases: None → 0.0, empty string → 0.0, invalid JSON → 0.0
+
+   - **`tests/test_v3_maintenance_extensions.py`** — Surgical fixes
+     - Collapsed import smoke tests into parametrized `test_module_exports_callable`
+     - Fixed `test_centrality_protection_flows_through` — removed conditional assertion
+     - Fixed `test_max_access_count_flows_through` — Opus found this survivor DAMN LIE with conditional `if/if` pattern, replaced with 7 unconditional assertions
+     - `test_register_all_tools` now verifies `mock_mcp.tool.call_count == 13`
+
+   - **`tests/test_v3_migration_messages.py`** — Surgical fixes
+     - Fixed `test_filters_by_since_timestamp` — manually sets `created_at` in the past, asserts exact count of 1
+     - Strengthened `test_returns_true_on_success` — now inserts test data, runs migrations, verifies tables/columns/row counts
+
+   - **`mcp_server/tools/__init__.py`** — Fixed stale comment "12 v2.0 tools" → "13 v2.0 tools"
+
+   - **`memory_palace/config_v2.py`** — To be modified by notification hook agent
+     - Currently has DEFAULT_CONFIG with database, ollama, synthesis, auto_link, toon_output, instances
+     - Needs: `notify_command` config key + env var override `MEMORY_PALACE_NOTIFY_COMMAND` + `get_notify_command()` helper
+
+   - **`mcp_server/tools/message.py`** — To be modified by notification hook agent
+     - Currently handles send/get/mark_read/mark_unread/subscribe/unsubscribe actions
+     - Needs: post-send hook after successful `send_message()` call in the `send` action
+
+4. Errors and Fixes:
+   - **Accidental tool rejection**: User hit wrong button rejecting a `message.get` call, said "whoops, wrong button" — I retried the same call successfully.
+   - **Partial direct implementation reverted**: I started implementing the notification hook directly by editing config_v2.py. User interrupted with "With agents, please" — I reverted my partial edit (removed the `notify_command` config addition) and launched a Sonnet agent instead.
+   - **Opus found survivor DAMN LIE**: The surgical fixes agent missed `test_max_access_count_flows_through` which still had `if "would_archive" in result: if "details" in result...` conditional pattern. Opus fixed it with unconditional assertions.
+   - **ResourceWarning spam**: Coverage run showed many "unclosed database" warnings from `test_recall_single_project_matches_multi_project_memory` and `test_max_access_count_flows_through` — SQLAlchemy sessions not being properly closed in test fixtures. Not addressed yet, cosmetic issue.
+
+5. Problem Solving:
+   - De-Claude-ification completed successfully across ~80 files with zero "Claude Memory Palace", "Claude instances", or "Claude consciousness" remaining. All legitimate product references preserved.
+   - Test quality went from 79% honest (103/130 STATISTICS) to ~98% honest (~189/192 STATISTICS). The fake embedding system was the main finding — 7 recall tests were testing a keyword→vector lookup table. Now they use geometric vectors with real cosine similarity math.
+   - Code coverage at 43% overall, ~52% excluding dead v1/v2 legacy code. Main gaps: LLM/embedding code (needs Ollama), legacy modules (dead code), async MCP wrapper.
+   - Pubsub messaging working — subscribed to `system` and `code` channels with Postgres LISTEN active.
+
+6. All User Messages:
+   - "Next step -> how many of our tests are lies, how many are damn lies, and how many are actual statistics? Not a rebuke if we find a ton, just checking known patterns. Are we mocking where we shouldn't, are there tests that cannot fail, etc."
+   - "Go aheand and have Sonnet agents swarms do it, then do the usual Opus integration/review."
+   - "Okay. NExt question. Code coverage percentage?"
+   - "Subscribe to channels system and code"
+   - "Get any notifications?"
+   - "whoops, wrong button"
+   - "Yes. Check for instance ID code"
+   - "You're running in code right now, so implement it"
+   - "With agents, please"
+   - (This summary request)
+
+7. Pending Tasks:
+   - **Post-send notification hook implementation** — Sonnet agent aa6f167 is running in background, implementing the spec from handoff message #284. Files being modified: `memory_palace/config_v2.py`, `mcp_server/tools/message.py`, new test file. Agent needs to complete, then Opus integration review.
+   - **Commit all changes** — Massive uncommitted changes across the entire release/2.0 branch: multi-project support, memory_recent tool, documentation refactor, de-Claude-ification, test quality fixes, notification hook. Jeff has NOT asked for a commit yet.
+
+8. Current Work:
+   The Sonnet agent (aa6f167) is currently implementing the post-send notification hook feature, based on a handoff spec (message ID 284) found in the `code` instance's pubsub messages. The spec calls for:
+   
+   - New `notify_command` config in `memory_palace/config_v2.py` with env var `MEMORY_PALACE_NOTIFY_COMMAND`
+   - Post-send hook execution in `mcp_server/tools/message.py` after successful `send_message()`
+   - Template variables: `{to_instance}`, `{from_instance}`, `{channel}`, `{priority}`, `{message_type}`, `{subject}`, `{message_id}`
+   - Shell-escaped with `shlex.quote()`, executed via `subprocess.run(shell=True, timeout=5)`
+   - Fire-and-forget: log errors, never fail the send
+   - Tests for: no-op when unconfigured, template substitution, shell escaping, failure resilience, timeout handling, env var override
+
+   User explicitly said "With agents, please" when I started implementing directly, so I launched the agent and it's running.
+
+9. Optional Next Step:
+   When agent aa6f167 completes, launch an Opus integration review agent to verify the notification hook implementation, then run the full test suite. This follows the user's established pattern: "Go ahead and have Sonnet agent swarms do it, then do the usual Opus integration/review."
+   
+   The user said "You're running in code right now, so implement it" and then "With agents, please" — so the next step is to collect the agent's output, review it with Opus, and report results.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: C:\Users\jeffr\.claude\projects\C--Users-jeffr-projects-efaas-claude-memory-palace\1403e5f4-c1cd-4959-b8ee-055718f77851.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+[14:42:36] ASSISTANT: 
+
+
+
+[14:42:36] ASSISTANT: [THINKING: Let me check on the status of the notification hook agent (aa6f167) that was running in the background. I need to see if it completed and what the results were.
+
+Looking at the system reminders, I ...]
+
+[14:42:36] ASSISTANT: 🗨️ Internal Chat ────────────────────────────────
+Sandy_dev: okay, context compaction happened. Let me pick up the thread
+FactCheckChica31: notification hook agent was running in background, need to check if it landed
+Sandy_dev: files I already read show notify_command in config and _execute_notify_hook in message.py... looks like the agent finished
+────────────────────────────────────────────────
+
+Let me check the agent output and current state of things.
+
+[14:42:36] ASSISTANT: [TOOL: TaskOutput]
