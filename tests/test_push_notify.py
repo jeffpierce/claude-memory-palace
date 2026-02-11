@@ -30,6 +30,7 @@ def sample_route():
     return {
         "gateway": "http://localhost:18789",
         "token": "test-token-abc",
+        "session": "agent:main:main",
     }
 
 
@@ -153,24 +154,25 @@ class TestOpenClawWake:
 
         mock_urlopen.assert_called_once()
         req = mock_urlopen.call_args[0][0]
-        assert req.full_url == "http://localhost:18789/hooks/wake"
+        assert req.full_url == "http://localhost:18789/hooks/agent"
         assert req.method == "POST"
         assert req.get_header("Content-type") == "application/json"
         assert req.get_header("Authorization") == "Bearer test-token-abc"
 
     @patch("urllib.request.urlopen")
-    def test_wake_payload_contains_text_and_mode(
+    def test_wake_payload_contains_message_and_wakemode(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Verify the JSON payload has correct text and mode."""
+        """Verify the JSON payload has correct message, wakeMode, and sessionKey."""
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert "Palace message from code" in payload["text"]
-        assert "Task completed" in payload["text"]
-        assert "msg #42" in payload["text"]
-        assert payload["mode"] == "now"  # priority=5 >= 5
+        assert "Palace message from code" in payload["message"]
+        assert "Task completed" in payload["message"]
+        assert "msg #42" in payload["message"]
+        assert payload["wakeMode"] == "now"  # priority=5 >= 5
+        assert payload["sessionKey"] == "agent:main:main"
 
     @patch("urllib.request.urlopen")
     def test_priority_below_5_uses_next_heartbeat(
@@ -182,43 +184,43 @@ class TestOpenClawWake:
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["mode"] == "next-heartbeat"
+        assert payload["wakeMode"] == "next-heartbeat"
 
     @patch("urllib.request.urlopen")
     def test_priority_5_uses_now(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Priority == 5 should use mode 'now'."""
+        """Priority == 5 should use wakeMode 'now'."""
         wake_params["priority"] = 5
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["mode"] == "now"
+        assert payload["wakeMode"] == "now"
 
     @patch("urllib.request.urlopen")
     def test_priority_10_uses_now(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Priority == 10 (max) should use mode 'now'."""
+        """Priority == 10 (max) should use wakeMode 'now'."""
         wake_params["priority"] = 10
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["mode"] == "now"
+        assert payload["wakeMode"] == "now"
 
     @patch("urllib.request.urlopen")
     def test_priority_0_uses_next_heartbeat(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Priority == 0 (default) should use mode 'next-heartbeat'."""
+        """Priority == 0 (default) should use wakeMode 'next-heartbeat'."""
         wake_params["priority"] = 0
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["mode"] == "next-heartbeat"
+        assert payload["wakeMode"] == "next-heartbeat"
 
     @patch("urllib.request.urlopen")
     def test_none_subject_falls_back_to_message_type(
@@ -230,18 +232,18 @@ class TestOpenClawWake:
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert "handoff" in payload["text"]
+        assert "handoff" in payload["message"]
 
     @patch("urllib.request.urlopen")
     def test_gateway_url_trailing_slash_stripped(
         self, mock_urlopen, execute_wake, wake_params
     ):
-        """Trailing slash on gateway URL is stripped before /hooks/wake."""
+        """Trailing slash on gateway URL is stripped before /hooks/agent."""
         route = {"gateway": "http://localhost:18789/", "token": "tok"}
         execute_wake(route=route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
-        assert req.full_url == "http://localhost:18789/hooks/wake"
+        assert req.full_url == "http://localhost:18789/hooks/agent"
 
     @patch("urllib.request.urlopen")
     def test_missing_token_uses_empty_bearer(
