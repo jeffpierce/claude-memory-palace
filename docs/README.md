@@ -878,6 +878,7 @@ message(
 | `MEMORY_PALACE_INSTANCE_ID` | Default instance ID | `unknown` |
 | `MEMORY_PALACE_DATABASE_URL` | Database connection URL (overrides config) | None |
 | `MEMORY_PALACE_NOTIFY_COMMAND` | Post-send notification command template | None |
+| `MEMORY_PALACE_INSTANCE_ROUTES` | Instance route map (JSON string) for push notifications | `{}` |
 
 ### Config File
 
@@ -893,11 +894,50 @@ Configuration is loaded from `~/.memory-palace/config.json`:
   "embedding_model": null,
   "llm_model": null,
   "instances": ["desktop", "code", "web"],
-  "notify_command": null
+  "notify_command": null,
+  "instance_routes": {}
 }
 ```
 
 Environment variables override config file values.
+
+### Instance Routes (Push Notifications)
+
+The `instance_routes` config enables real-time push notifications when messages are sent between instances. Each route maps an instance ID to an OpenClaw gateway URL and auth token:
+
+```json
+{
+  "instance_routes": {
+    "prime": {
+      "gateway": "http://localhost:18789",
+      "token": "your-gateway-token-here"
+    },
+    "crashtest": {
+      "gateway": "http://localhost:18790",
+      "token": "crashtest-gateway-token-here"
+    }
+  }
+}
+```
+
+**How it works:**
+- When a message is sent, the palace looks up the recipient's route
+- If found, it POSTs to `{gateway}/hooks/wake` with a wake text and mode
+- Priority >= 5 uses `"mode": "now"` (immediate wake), lower uses `"next-heartbeat"`
+- Broadcast messages (`to_instance: "all"`) wake all routed instances except the sender
+- Wake failures are logged but never break message delivery
+
+**Prerequisites:** Each target OpenClaw gateway must have external hooks enabled:
+```json
+{
+  "hooks": {
+    "enabled": true,
+    "token": "shared-secret"
+  }
+}
+```
+
+The existing `notify_command` (shell hook) continues to work as a fallback or alongside instance routes. Both mechanisms can fire independently.
 
 ### Model Configuration
 
