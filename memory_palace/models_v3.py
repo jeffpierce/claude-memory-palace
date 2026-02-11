@@ -344,7 +344,8 @@ class Message(Base):
               **({"postgresql_where": text("read_at IS NULL")} if _USE_PG_TYPES else {})),
         # Index for pubsub channel queries
         Index("idx_messages_channel_status", "channel", "delivery_status"),
-        Index("idx_messages_priority_desc", "priority", postgresql_ops={"priority": "DESC"} if _USE_PG_TYPES else None),
+        Index("idx_messages_priority_desc", "priority",
+              **({"postgresql_ops": {"priority": "DESC"}} if _USE_PG_TYPES else {})),
     )
 
     def __repr__(self):
