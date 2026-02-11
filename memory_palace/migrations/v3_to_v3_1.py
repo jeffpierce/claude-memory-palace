@@ -158,10 +158,15 @@ def migrate_memories_table(engine: Engine) -> None:
         # Step 4: Create new indexes
         print("  Creating new projects indexes...")
         if not _index_exists(engine, "memories", "idx_memories_instance_projects"):
-            conn.execute(text(
-                "CREATE INDEX idx_memories_instance_projects ON memories(instance_id, projects)"
-            ))
-            print("  Created idx_memories_instance_projects")
+            if is_postgres():
+                # ARRAY(Text) supports btree indexing on PostgreSQL
+                conn.execute(text(
+                    "CREATE INDEX idx_memories_instance_projects ON memories(instance_id, projects)"
+                ))
+                print("  Created idx_memories_instance_projects")
+            else:
+                # JSON columns can't be btree-indexed; instance_id is already indexed individually
+                print("  Skipping idx_memories_instance_projects (JSON column, not indexable as btree)")
         else:
             print("  Index idx_memories_instance_projects already exists")
         conn.commit()

@@ -133,7 +133,14 @@ class Memory(Base):
     )
 
     __table_args__ = (
-        Index("idx_memories_instance_projects", "instance_id", "projects"),
+        # Note: composite index on (instance_id, projects) only works when
+        # projects is ARRAY(Text) on PostgreSQL. When projects is JSON
+        # (SQLite or PG without _USE_PG_TYPES), btree indexing fails.
+        # instance_id is already individually indexed (index=True on column).
+        *(
+            (Index("idx_memories_instance_projects", "instance_id", "projects"),)
+            if _USE_PG_TYPES else ()
+        ),
         Index("idx_memories_foundational", "foundational"),
     )
 
