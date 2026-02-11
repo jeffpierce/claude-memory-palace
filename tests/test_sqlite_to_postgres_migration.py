@@ -40,13 +40,72 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def sqlite_engine():
-    """Create in-memory SQLite database with v3 schema."""
+    """Create in-memory SQLite database with v3 schema.
+
+    Uses raw DDL because when _USE_PG_TYPES=True (CI postgres job),
+    Base.metadata has ARRAY columns that SQLite can't render.
+    Migration tests need both dialects simultaneously.
+    """
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE memories (
+                id INTEGER PRIMARY KEY,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME,
+                instance_id VARCHAR(50) NOT NULL,
+                projects JSON NOT NULL,
+                memory_type VARCHAR(50) NOT NULL,
+                subject VARCHAR(255),
+                content TEXT NOT NULL,
+                keywords JSON,
+                tags JSON,
+                foundational BOOLEAN DEFAULT 0,
+                source_type VARCHAR(50),
+                source_context JSON,
+                source_session_id VARCHAR(100),
+                embedding TEXT,
+                last_accessed_at DATETIME,
+                access_count INTEGER DEFAULT 0,
+                expires_at DATETIME,
+                is_archived BOOLEAN DEFAULT 0
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE memory_edges (
+                id INTEGER PRIMARY KEY,
+                created_at DATETIME NOT NULL,
+                source_id INTEGER NOT NULL REFERENCES memories(id),
+                target_id INTEGER NOT NULL REFERENCES memories(id),
+                relation_type VARCHAR(50) NOT NULL,
+                strength FLOAT DEFAULT 0.5,
+                bidirectional BOOLEAN DEFAULT 0,
+                edge_metadata JSON
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE messages (
+                id INTEGER PRIMARY KEY,
+                created_at DATETIME NOT NULL,
+                from_instance VARCHAR(50) NOT NULL,
+                to_instance VARCHAR(50) NOT NULL,
+                content TEXT NOT NULL,
+                message_type VARCHAR(50) NOT NULL,
+                subject VARCHAR(255),
+                channel VARCHAR(100),
+                delivery_status VARCHAR(20) DEFAULT 'pending',
+                priority INTEGER DEFAULT 0,
+                read_at DATETIME,
+                read_by VARCHAR(50),
+                expires_at DATETIME,
+                in_reply_to INTEGER
+            )
+        """))
+        conn.commit()
     return engine
 
 
