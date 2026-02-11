@@ -36,10 +36,17 @@ def _execute_openclaw_wake(
     """
     Fire-and-forget HTTP wake to an OpenClaw gateway. Never raises.
 
-    Sends a POST to the gateway's /hooks/agent endpoint to deliver a
-    system event to the target agent session. Uses sessionKey for
-    targeted delivery (not broadcast). Priority >= 5 uses wakeMode "now"
-    (immediate), lower priority uses "next-heartbeat".
+    Uses /hooks/wake to inject a system event into the gateway's main
+    session. The wake text includes enough context for the main agent
+    to relay to the correct target session if needed.
+
+    Note: OpenClaw's /hooks/wake and /hooks/agent endpoints only target
+    the main agent session. For multi-agent routing, the main agent
+    must relay via sessions_send, or each agent must poll their own
+    palace inbox on heartbeat.
+
+    Priority >= 5 uses mode "now" (immediate wake), lower priority
+    uses "next-heartbeat".
 
     Args:
         route: Dict with "gateway" (URL), "token" (auth secret), and
@@ -57,21 +64,27 @@ def _execute_openclaw_wake(
         session_key = route.get("session")
 
         wake_text = (
-            f"Palace message from {from_instance}: "
+            f"Palace message from {from_instance} to {to_instance}: "
             f"{subject or message_type} (msg #{message_id})"
         )
 
-        payload_dict = {
-            "message": wake_text,
-            "wakeMode": "now" if priority >= 5 else "next-heartbeat",
-        }
+        # If route has a session key, include relay instructions
         if session_key:
-            payload_dict["sessionKey"] = session_key
+            wake_text += (
+                f"\n[Relay to session: {session_key} — "
+                f"use sessions_send to notify {to_instance} to check "
+                f"their palace inbox for message #{message_id}]"
+            )
+
+        payload_dict = {
+            "text": wake_text,
+            "mode": "now" if priority >= 5 else "next-heartbeat",
+        }
 
         payload = _json.dumps(payload_dict).encode("utf-8")
 
         req = urllib.request.Request(
-            f"{gateway_url}/hooks/agent",
+            f"{gateway_url}/hooks/wake",
             data=payload,
             headers={
                 "Content-Type": "application/json",
