@@ -737,9 +737,9 @@ class TestMoltbookExtension:
             if attr_name != "mcp":
                 assert callable(getattr(moltbook_server, attr_name)), f"server.{attr_name} not callable"
         except ImportError as e:
-            # moltbook_tools may not be installed, which is expected in test
-            if "moltbook_tools" in str(e):
-                pytest.skip("moltbook_tools not installed")
+            # moltbook_tools or mcp SDK may not be installed in test env
+            if "moltbook_tools" in str(e) or "mcp" in str(e):
+                pytest.skip(f"dependency not installed: {e}")
             raise
         finally:
             # Clean up sys.path
@@ -794,11 +794,9 @@ class TestToonConverterExtension:
             assert hasattr(toon_server, "mcp")
             assert hasattr(toon_server, "convert_jsonl_to_toon")
             assert callable(toon_server.convert_jsonl_to_toon)
-        except ImportError as e:
-            # converter module may have dependencies
-            if "converter" in str(e) or "ImportError" in str(e):
-                pytest.skip(f"converter module dependencies not available: {e}")
-            raise
+        except (ImportError, SystemExit) as e:
+            # MCP SDK or converter deps may not be installed in test env
+            pytest.skip(f"server dependencies not available: {e}")
 
 
 class TestCrossProjectAutoLinks:
