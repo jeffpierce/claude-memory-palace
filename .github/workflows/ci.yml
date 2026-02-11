@@ -62,4 +62,5 @@ jobs:
       - name: Run PostgreSQL migration tests
         env:
           MEMORY_PALACE_TEST_POSTGRES_URL: postgresql://test:test@localhost:5432/test_memory_palace
+          MEMORY_PALACE_DATABASE_URL: postgresql://test:test@localhost:5432/test_memory_palace
         run: pytest tests/test_sqlite_to_postgres_migration.py -v --tb=short

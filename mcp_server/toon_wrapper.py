@@ -7,8 +7,20 @@ Returns TOON-encoded strings as MCP TextContent so the SDK doesn't reject them.
 from functools import wraps
 from typing import Any, Callable, Dict
 
-from mcp.types import TextContent
 from memory_palace.config import is_toon_output_enabled
+
+# Lazy import — MCP SDK is a runtime dep, not needed for tests that only
+# exercise config/notification logic without actually serving MCP tools.
+_TextContent = None
+
+
+def _get_text_content_class():
+    """Lazy-load mcp.types.TextContent. Fails loud at runtime if missing."""
+    global _TextContent
+    if _TextContent is None:
+        from mcp.types import TextContent
+        _TextContent = TextContent
+    return _TextContent
 
 # Lazy import toons — fail loud if missing when enabled (12-factor: no silent degradation)
 _toon_encode = None
@@ -62,7 +74,8 @@ def toon_response(func: Callable) -> Callable:
         if toon and isinstance(result, dict):
             encoder = _get_toon_encoder()
             encoded = encoder(result)
-            return [TextContent(type="text", text=encoded)]
+            TC = _get_text_content_class()
+            return [TC(type="text", text=encoded)]
 
         return result
 

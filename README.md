@@ -55,7 +55,7 @@ See [docs/models.md](docs/models.md) for the full model guide with VRAM budgets 
 - **Multi-Project Support** — Memories can belong to multiple projects simultaneously
 - **Foundational Memories** — Core memories protected from archival and decay
 - **Code Indexing** — Index source files as prose descriptions for natural language code search
-- **Inter-Instance Messaging** — Unified pub/sub messaging between AI instances with channels and priorities
+- **Inter-Instance Messaging** — Unified pub/sub messaging between AI instances with channels, priorities, and push notifications via OpenClaw gateway wake
 - **Transcript Reflection** — Automatically extract memories from conversation logs
 - **Multi-Backend** — SQLite for personal use, PostgreSQL + pgvector for teams
 - **Local Processing** — All embeddings, extraction, and synthesis run locally via Ollama
@@ -183,6 +183,7 @@ Configuration loads from `~/.memory-palace/config.json` with environment variabl
 | `MEMORY_PALACE_LLM_MODEL` | LLM for synthesis/extraction | Auto-detected |
 | `MEMORY_PALACE_INSTANCE_ID` | Default instance ID | `unknown` |
 | `MEMORY_PALACE_NOTIFY_COMMAND` | Post-send notification command template | None |
+| `MEMORY_PALACE_INSTANCE_ROUTES` | Instance route map (JSON string) for push notifications | `{}` |
 
 ```json
 {
@@ -203,7 +204,13 @@ Configuration loads from `~/.memory-palace/config.json` with environment variabl
   },
   "toon_output": true,
   "instances": ["desktop", "code", "web"],
-  "notify_command": null
+  "notify_command": null,
+  "instance_routes": {
+    "prime": {
+      "gateway": "http://localhost:18789",
+      "token": "your-gateway-token-here"
+    }
+  }
 }
 ```
 

@@ -40,13 +40,72 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def sqlite_engine():
-    """Create in-memory SQLite database with v3 schema."""
+    """Create in-memory SQLite database with v3 schema.
+
+    Uses raw DDL because when _USE_PG_TYPES=True (CI postgres job),
+    Base.metadata has ARRAY columns that SQLite can't render.
+    Migration tests need both dialects simultaneously.
+    """
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE memories (
+                id INTEGER PRIMARY KEY,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME,
+                instance_id VARCHAR(50) NOT NULL,
+                projects JSON NOT NULL,
+                memory_type VARCHAR(50) NOT NULL,
+                subject VARCHAR(255),
+                content TEXT NOT NULL,
+                keywords JSON,
+                tags JSON,
+                foundational BOOLEAN DEFAULT 0,
+                source_type VARCHAR(50),
+                source_context JSON,
+                source_session_id VARCHAR(100),
+                embedding TEXT,
+                last_accessed_at DATETIME,
+                access_count INTEGER DEFAULT 0,
+                expires_at DATETIME,
+                is_archived BOOLEAN DEFAULT 0
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE memory_edges (
+                id INTEGER PRIMARY KEY,
+                created_at DATETIME NOT NULL,
+                source_id INTEGER NOT NULL REFERENCES memories(id),
+                target_id INTEGER NOT NULL REFERENCES memories(id),
+                relation_type VARCHAR(50) NOT NULL,
+                strength FLOAT DEFAULT 0.5,
+                bidirectional BOOLEAN DEFAULT 0,
+                edge_metadata JSON
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE messages (
+                id INTEGER PRIMARY KEY,
+                created_at DATETIME NOT NULL,
+                from_instance VARCHAR(50) NOT NULL,
+                to_instance VARCHAR(50) NOT NULL,
+                content TEXT NOT NULL,
+                message_type VARCHAR(50) NOT NULL,
+                subject VARCHAR(255),
+                channel VARCHAR(100),
+                delivery_status VARCHAR(20) DEFAULT 'pending',
+                priority INTEGER DEFAULT 0,
+                read_at DATETIME,
+                read_by VARCHAR(50),
+                expires_at DATETIME,
+                in_reply_to INTEGER
+            )
+        """))
+        conn.commit()
     return engine
 
 
@@ -102,10 +161,10 @@ def test_migrate_memories_basic(sqlite_engine, postgres_engine):
         conn.execute(text("""
             INSERT INTO memories (
                 id, instance_id, projects, memory_type, subject, content,
-                keywords, tags, foundational
+                keywords, tags, foundational, created_at
             ) VALUES (
                 1, 'test', '["project1"]', 'fact', 'test subject', 'test content',
-                '["key1", "key2"]', '["tag1"]', 0
+                '["key1", "key2"]', '["tag1"]', 0, '2026-01-01 00:00:00'
             )
         """))
         conn.commit()
@@ -132,10 +191,10 @@ def test_migrate_memories_with_embedding(sqlite_engine, postgres_engine):
         conn.execute(text("""
             INSERT INTO memories (
                 id, instance_id, projects, memory_type, content,
-                embedding
+                embedding, created_at
             ) VALUES (
                 1, 'test', '["project1"]', 'fact', 'test content',
-                :embedding
+                :embedding, '2026-01-01 00:00:00'
             )
         """), {"embedding": json.dumps(embedding)})
         conn.commit()
@@ -157,10 +216,10 @@ def test_migrate_memories_arrays(sqlite_engine, postgres_engine):
         conn.execute(text("""
             INSERT INTO memories (
                 id, instance_id, projects, memory_type, content,
-                keywords, tags
+                keywords, tags, created_at
             ) VALUES (
                 1, 'test', '["proj1", "proj2"]', 'fact', 'test',
-                '["key1", "key2", "key3"]', '["tag1", "tag2"]'
+                '["key1", "key2", "key3"]', '["tag1", "tag2"]', '2026-01-01 00:00:00'
             )
         """))
         conn.commit()
@@ -188,25 +247,25 @@ def test_migrate_memory_edges_basic(sqlite_engine, postgres_engine):
     """Test basic memory_edges migration."""
     with sqlite_engine.connect() as conn:
         conn.execute(text("""
-            INSERT INTO memories (id, instance_id, projects, memory_type, content)
-            VALUES (1, 'test', '["project1"]', 'fact', 'mem1'),
-                   (2, 'test', '["project1"]', 'fact', 'mem2')
+            INSERT INTO memories (id, instance_id, projects, memory_type, content, created_at)
+            VALUES (1, 'test', '["project1"]', 'fact', 'mem1', '2026-01-01 00:00:00'),
+                   (2, 'test', '["project1"]', 'fact', 'mem2', '2026-01-01 00:00:00')
         """))
 
         conn.execute(text("""
             INSERT INTO memory_edges (
-                id, source_id, target_id, relation_type, strength, bidirectional
+                id, source_id, target_id, relation_type, strength, bidirectional, created_at
             ) VALUES (
-                1, 1, 2, 'relates_to', 0.8, 0
+                1, 1, 2, 'relates_to', 0.8, 0, '2026-01-01 00:00:00'
             )
         """))
         conn.commit()
 
     with postgres_engine.connect() as conn:
         conn.execute(text("""
-            INSERT INTO memories (id, instance_id, projects, memory_type, content)
-            VALUES (1, 'test', ARRAY['project1'], 'fact', 'mem1'),
-                   (2, 'test', ARRAY['project1'], 'fact', 'mem2')
+            INSERT INTO memories (id, instance_id, projects, memory_type, content, created_at)
+            VALUES (1, 'test', ARRAY['project1'], 'fact', 'mem1', '2026-01-01 00:00:00'),
+                   (2, 'test', ARRAY['project1'], 'fact', 'mem2', '2026-01-01 00:00:00')
         """))
         conn.commit()
 
@@ -228,26 +287,26 @@ def test_migrate_memory_edges_with_metadata(sqlite_engine, postgres_engine):
     """Test memory_edges migration with JSON metadata conversion to JSONB."""
     with sqlite_engine.connect() as conn:
         conn.execute(text("""
-            INSERT INTO memories (id, instance_id, projects, memory_type, content)
-            VALUES (1, 'test', '["project1"]', 'fact', 'mem1'),
-                   (2, 'test', '["project1"]', 'fact', 'mem2')
+            INSERT INTO memories (id, instance_id, projects, memory_type, content, created_at)
+            VALUES (1, 'test', '["project1"]', 'fact', 'mem1', '2026-01-01 00:00:00'),
+                   (2, 'test', '["project1"]', 'fact', 'mem2', '2026-01-01 00:00:00')
         """))
 
         metadata = {"note": "test metadata", "confidence": 0.9}
         conn.execute(text("""
             INSERT INTO memory_edges (
-                id, source_id, target_id, relation_type, edge_metadata
+                id, source_id, target_id, relation_type, edge_metadata, created_at
             ) VALUES (
-                1, 1, 2, 'relates_to', :metadata
+                1, 1, 2, 'relates_to', :metadata, '2026-01-01 00:00:00'
             )
         """), {"metadata": json.dumps(metadata)})
         conn.commit()
 
     with postgres_engine.connect() as conn:
         conn.execute(text("""
-            INSERT INTO memories (id, instance_id, projects, memory_type, content)
-            VALUES (1, 'test', ARRAY['project1'], 'fact', 'mem1'),
-                   (2, 'test', ARRAY['project1'], 'fact', 'mem2')
+            INSERT INTO memories (id, instance_id, projects, memory_type, content, created_at)
+            VALUES (1, 'test', ARRAY['project1'], 'fact', 'mem1', '2026-01-01 00:00:00'),
+                   (2, 'test', ARRAY['project1'], 'fact', 'mem2', '2026-01-01 00:00:00')
         """))
         conn.commit()
 
@@ -269,10 +328,10 @@ def test_migrate_messages_basic(sqlite_engine, postgres_engine):
         conn.execute(text("""
             INSERT INTO messages (
                 id, from_instance, to_instance, message_type, content,
-                channel, priority
+                channel, priority, created_at
             ) VALUES (
                 1, 'instance1', 'instance2', 'handoff', 'test message',
-                'test_channel', 5
+                'test_channel', 5, '2026-01-01 00:00:00'
             )
         """))
         conn.commit()
@@ -298,9 +357,9 @@ def test_migrate_messages_batch(sqlite_engine, postgres_engine):
         for i in range(1, 251):
             conn.execute(text("""
                 INSERT INTO messages (
-                    id, from_instance, to_instance, message_type, content
+                    id, from_instance, to_instance, message_type, content, created_at
                 ) VALUES (
-                    :id, 'instance1', 'instance2', 'message', :content
+                    :id, 'instance1', 'instance2', 'message', :content, '2026-01-01 00:00:00'
                 )
             """), {"id": i, "content": f"message {i}"})
         conn.commit()
@@ -316,12 +375,12 @@ def test_verify_migration_success(sqlite_engine, postgres_engine):
     """Test migration verification when all counts match."""
     with sqlite_engine.connect() as conn:
         conn.execute(text("""
-            INSERT INTO memories (id, instance_id, projects, memory_type, content)
-            VALUES (1, 'test', '["project1"]', 'fact', 'test')
+            INSERT INTO memories (id, instance_id, projects, memory_type, content, created_at)
+            VALUES (1, 'test', '["project1"]', 'fact', 'test', '2026-01-01 00:00:00')
         """))
         conn.execute(text("""
-            INSERT INTO messages (id, from_instance, to_instance, message_type, content)
-            VALUES (1, 'i1', 'i2', 'message', 'test')
+            INSERT INTO messages (id, from_instance, to_instance, message_type, content, created_at)
+            VALUES (1, 'i1', 'i2', 'message', 'test', '2026-01-01 00:00:00')
         """))
         conn.commit()
 
@@ -336,8 +395,8 @@ def test_dry_run_mode(sqlite_engine, postgres_engine):
     """Test dry run mode doesn't write data."""
     with sqlite_engine.connect() as conn:
         conn.execute(text("""
-            INSERT INTO memories (id, instance_id, projects, memory_type, content)
-            VALUES (1, 'test', '["project1"]', 'fact', 'test')
+            INSERT INTO memories (id, instance_id, projects, memory_type, content, created_at)
+            VALUES (1, 'test', '["project1"]', 'fact', 'test', '2026-01-01 00:00:00')
         """))
         conn.commit()
 
@@ -353,8 +412,8 @@ def test_on_conflict_do_nothing(sqlite_engine, postgres_engine):
     """Test that re-running migration skips existing rows."""
     with sqlite_engine.connect() as conn:
         conn.execute(text("""
-            INSERT INTO memories (id, instance_id, projects, memory_type, content)
-            VALUES (1, 'test', '["project1"]', 'fact', 'test')
+            INSERT INTO memories (id, instance_id, projects, memory_type, content, created_at)
+            VALUES (1, 'test', '["project1"]', 'fact', 'test', '2026-01-01 00:00:00')
         """))
         conn.commit()
 

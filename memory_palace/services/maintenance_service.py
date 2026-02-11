@@ -399,9 +399,13 @@ def cleanup_cross_project_auto_links(
     Returns:
         Dict with findings count, log path, and deletion status.
     """
-    import toons
     from pathlib import Path
     from datetime import datetime, timezone
+
+    try:
+        import toons
+    except ImportError:
+        toons = None
 
     db = get_session()
     try:
@@ -424,9 +428,13 @@ def cleanup_cross_project_auto_links(
             ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             log_path = str(palace_dir / f"cleanup_cross_project_{ts}.toon")
 
-        # Write TOON log before deleting
+        # Write log before deleting (TOON if available, JSON fallback)
         with open(log_path, "w", encoding="utf-8") as f:
-            toons.dump(findings, f)
+            if toons is not None:
+                toons.dump(findings, f)
+            else:
+                import json
+                json.dump(findings, f, indent=2, default=str)
 
         # Delete the cross-project auto-linked edges
         edge_ids = [f["edge_id"] for f in findings]

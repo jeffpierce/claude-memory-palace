@@ -63,6 +63,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # {message_type}, {subject}, {message_id}
     # Example: "openclaw cron wake --text \"{from_instance} sent {message_type} to {to_instance}\""
     "notify_command": None,
+    # Instance routes for OpenClaw push notifications
+    # Maps instance_id -> {"gateway": "http://...", "token": "secret", "session": "agent:X:main"}
+    # When set, post-send notification uses HTTP /hooks/agent for targeted delivery.
+    # "session" is the OpenClaw session key for the target agent (enables targeted wake).
+    # Env override: MEMORY_PALACE_INSTANCE_ROUTES (JSON string)
+    "instance_routes": {},
 }
 
 # Preferred models for auto-detection (in order of preference)
@@ -174,6 +180,14 @@ def load_config() -> Dict[str, Any]:
 
     if os.environ.get("MEMORY_PALACE_NOTIFY_COMMAND"):
         config["notify_command"] = os.environ["MEMORY_PALACE_NOTIFY_COMMAND"]
+
+    if os.environ.get("MEMORY_PALACE_INSTANCE_ROUTES"):
+        try:
+            config["instance_routes"] = json.loads(
+                os.environ["MEMORY_PALACE_INSTANCE_ROUTES"]
+            )
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"Warning: Could not parse MEMORY_PALACE_INSTANCE_ROUTES: {e}")
 
     _config_cache = config
     return config
@@ -410,6 +424,32 @@ def get_notify_command() -> Optional[str]:
         Command template string, or None if no notification configured
     """
     return load_config().get("notify_command")
+
+
+def get_instance_routes() -> Dict[str, Dict[str, str]]:
+    """
+    Get all instance routes for OpenClaw push notifications.
+
+    Routes map instance IDs to gateway URLs and auth tokens, enabling
+    HTTP wake notifications when messages are sent.
+
+    Returns:
+        Dict mapping instance_id -> {"gateway": "url", "token": "secret"}
+    """
+    return load_config().get("instance_routes", {})
+
+
+def get_instance_route(instance_id: str) -> Optional[Dict[str, str]]:
+    """
+    Get the route for a specific instance, or None if not configured.
+
+    Args:
+        instance_id: The instance to look up
+
+    Returns:
+        Dict with "gateway" and "token" keys, or None
+    """
+    return get_instance_routes().get(instance_id)
 
 
 def ensure_data_dir() -> Path:
