@@ -59,6 +59,19 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
+      - name: Debug config
+        env:
+          MEMORY_PALACE_DATABASE_URL: postgresql://test:test@localhost:5432/test_memory_palace
+        run: |
+          python -c "
+          from memory_palace.config_v2 import is_postgres, load_config
+          cfg = load_config()
+          print(f'database.type: {cfg[\"database\"][\"type\"]}')
+          print(f'is_postgres: {is_postgres()}')
+          from memory_palace.models_v3 import _USE_PG_TYPES
+          print(f'_USE_PG_TYPES: {_USE_PG_TYPES}')
+          "
+
       - name: Run PostgreSQL migration tests
         env:
           MEMORY_PALACE_TEST_POSTGRES_URL: postgresql://test:test@localhost:5432/test_memory_palace
