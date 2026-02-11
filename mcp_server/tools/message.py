@@ -1,10 +1,12 @@
 """
 Message tool for Memory Palace MCP server.
 """
+import json as _json
 import shlex
 import subprocess
 import sys
-from typing import Any, Optional
+import urllib.request
+from typing import Any, Dict, Optional
 
 from memory_palace.services.message_service import (
     send_message,
@@ -14,8 +16,69 @@ from memory_palace.services.message_service import (
     subscribe,
     unsubscribe,
 )
-from memory_palace.config_v2 import get_notify_command
+from memory_palace.config_v2 import (
+    get_notify_command,
+    get_instance_route,
+    get_instance_routes,
+)
 from mcp_server.toon_wrapper import toon_response
+
+
+def _execute_openclaw_wake(
+    route: Dict[str, str],
+    from_instance: str,
+    to_instance: str,
+    message_type: str,
+    subject: Optional[str],
+    message_id: Any,
+    priority: int,
+) -> None:
+    """
+    Fire-and-forget HTTP wake to an OpenClaw gateway. Never raises.
+
+    Sends a POST to the gateway's /hooks/wake endpoint to notify the
+    target instance of a new message. Priority >= 5 uses mode "now"
+    (immediate wake), lower priority uses "next-heartbeat".
+
+    Args:
+        route: Dict with "gateway" (URL) and "token" (auth secret) keys
+        from_instance: Sender instance ID
+        to_instance: Recipient instance ID
+        message_type: Type of message sent
+        subject: Message subject (may be None)
+        message_id: ID of the sent message
+        priority: Message priority (0-10)
+    """
+    try:
+        gateway_url = route["gateway"].rstrip("/")
+        token = route.get("token", "")
+
+        wake_text = (
+            f"Palace message from {from_instance}: "
+            f"{subject or message_type} (msg #{message_id})"
+        )
+
+        payload = _json.dumps({
+            "text": wake_text,
+            "mode": "now" if priority >= 5 else "next-heartbeat",
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            f"{gateway_url}/hooks/wake",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+            method="POST",
+        )
+
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print(
+            f"Warning: OpenClaw wake failed for {to_instance}: {e}",
+            file=sys.stderr,
+        )
 
 
 def _execute_notify_hook(
@@ -154,19 +217,43 @@ def register_message(mcp):
                 priority=priority,
             )
 
-            # Execute post-send notification hook if configured
-            notify_cmd = get_notify_command()
-            if notify_cmd is not None and result.get("success"):
-                _execute_notify_hook(
-                    command_template=notify_cmd,
-                    send_result=result,
-                    from_instance=from_instance,
-                    to_instance=to_instance,
-                    message_type=message_type,
-                    subject=subject,
-                    channel=channel,
-                    priority=priority,
-                )
+            # Post-send notifications (fire-and-forget, never fail the send)
+            if result.get("success"):
+                _notify_params = {
+                    "from_instance": from_instance,
+                    "to_instance": to_instance,
+                    "message_type": message_type,
+                    "subject": subject,
+                    "message_id": result.get("id", ""),
+                    "priority": priority,
+                }
+
+                # 1. Try instance_routes (HTTP wake) — preferred
+                route = get_instance_route(to_instance)
+                if route:
+                    _execute_openclaw_wake(route=route, **_notify_params)
+                elif to_instance == "all":
+                    # Broadcast: wake all routed instances except sender
+                    for inst_id, inst_route in get_instance_routes().items():
+                        if inst_id != from_instance:
+                            _execute_openclaw_wake(
+                                route=inst_route,
+                                **{**_notify_params, "to_instance": inst_id},
+                            )
+
+                # 2. Fallback to notify_command (shell exec) — backwards compat
+                notify_cmd = get_notify_command()
+                if notify_cmd is not None:
+                    _execute_notify_hook(
+                        command_template=notify_cmd,
+                        send_result=result,
+                        from_instance=from_instance,
+                        to_instance=to_instance,
+                        message_type=message_type,
+                        subject=subject,
+                        channel=channel,
+                        priority=priority,
+                    )
 
             return result
         elif action == "get":
