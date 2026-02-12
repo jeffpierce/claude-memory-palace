@@ -22,26 +22,13 @@ def register_link(mcp):
         created_by: Optional[str] = None,
         archive_old: bool = False
     ) -> dict[str, Any]:
+        # Create edge between memories. Replaces memory_supersede.
         """
-        Create a relationship edge between two memories.
+        Create relationship edge.
 
-        Standard types: supersedes, relates_to, derived_from, contradicts, exemplifies, refines (custom allowed).
-
-        When archive_old=True with relation_type="supersedes", archives the target memory.
-        This replaces the old memory_supersede tool.
-
-        Args:
-            source_id: ID of the source memory
-            target_id: ID of the target memory (edge points TO this)
-            relation_type: Type of relationship (standard or custom)
-            strength: Edge weight 0.0-1.0 for weighted traversal (default 1.0)
-            bidirectional: If True, edge works in both directions (default False)
-            metadata: Optional extra data to store with the edge (JSON object)
-            created_by: Instance ID creating this edge (e.g., "clawdbot", "desktop")
-            archive_old: If True AND relation_type="supersedes", archives the target (default False)
-
-        Returns:
-            Dict with edge ID and confirmation message
+        Standard types: supersedes, relates_to, derived_from, contradicts, exemplifies, refines (custom OK).
+        archive_old: True + relation_type="supersedes" archives target (default False).
+        strength: 0.0-1.0 (default 1.0).
         """
         return link_memories(
             source_id=source_id,

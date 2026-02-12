@@ -180,36 +180,15 @@ def register_message(mcp):
         # Mark params
         message_id: Optional[int] = None,
     ) -> dict[str, Any]:
+        # Inter-instance messaging with pubsub. Replaces handoff_send/get/mark_read.
+        # Postgres: real-time NOTIFY. SQLite: polling.
         """
-        Inter-instance messaging with pubsub support. Replaces handoff_send/get/mark_read.
+        Inter-instance messaging with pubsub.
 
-        Actions:
-          send — Send message. Requires from_instance, to_instance, content.
-          get — Get messages. Requires instance_id. Optional: channel, message_type, unread_only, limit.
-          mark_read — Mark read. Requires message_id, instance_id.
-          mark_unread — Mark unread. Requires message_id.
-          subscribe — Subscribe to channel. Requires instance_id, channel.
-          unsubscribe — Unsubscribe. Requires instance_id, channel.
-
-        Message types: handoff, status, question, fyi, context, event, message.
-        Postgres uses NOTIFY for real-time delivery; SQLite uses polling.
-
-        Args:
-            action: One of: send, get, mark_read, mark_unread, subscribe, unsubscribe
-            instance_id: Instance performing the action (for get/mark_read/subscribe)
-            from_instance: Sender (for send)
-            to_instance: Recipient or "all" for broadcast (for send)
-            content: Message content (for send)
-            message_type: Type of message (default "message")
-            subject: Optional short summary (for send)
-            channel: Channel name (for send/get/subscribe/unsubscribe)
-            priority: 0-10, higher = more urgent (for send, default 0)
-            unread_only: Only unread messages (for get, default True)
-            limit: Max messages to return (for get, default 50)
-            message_id: Message ID (for mark_read/mark_unread)
-
-        Returns:
-            Action-specific result dict
+        Actions: send, get, mark_read, mark_unread, subscribe, unsubscribe
+        Types: handoff, status, question, fyi, context, event, message
+        to_instance: "all" for broadcast
+        priority: 0-10 (default 0)
         """
         if action == "send":
             if not from_instance or not to_instance or not content:

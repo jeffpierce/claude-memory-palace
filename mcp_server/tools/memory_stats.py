@@ -11,11 +11,8 @@ def register_memory_stats(mcp):
     @mcp.tool()
     @toon_response
     async def memory_stats() -> dict[str, Any]:
+        # Stats: total, counts by type/instance/project, foundational, most accessed, recent.
         """
-        Overview statistics: total memories, counts by type/instance/project,
-        foundational count, most accessed, and recently added.
-
-        Returns:
-            Dictionary with memory statistics
+        Overview statistics.
         """
         return get_memory_stats()

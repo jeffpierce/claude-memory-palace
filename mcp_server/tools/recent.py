@@ -18,22 +18,13 @@ def register_recent(mcp):
         instance_id: Optional[str] = None,
         include_archived: bool = False,
     ) -> dict[str, Any]:
+        # Last X memories, newest first. Default: title-card (id, subject, type, project, date).
         """
-        Get the last X memories, newest first.
+        Last X memories, newest first.
 
-        Default returns title-card format (id, subject, type, project, date).
-        Set verbose=True for full memory details.
-
-        Args:
-            limit: Number of memories to return (default 20, max 200)
-            verbose: False = title only (compact). True = full details.
-            project: Filter by project (string or list). Optional.
-            memory_type: Filter by type, supports wildcards like "code_*". Optional.
-            instance_id: Filter by instance. Optional.
-            include_archived: Include archived memories (default False)
-
-        Returns:
-            {"memories": list, "count": int, "total_available": int}
+        verbose: False=title-card (default), True=full details.
+        memory_type: Supports wildcards like "code_*".
+        limit: Max 200.
         """
         return get_recent_memories(
             limit=limit,

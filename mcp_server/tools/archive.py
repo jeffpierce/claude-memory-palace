@@ -21,28 +21,12 @@ def register_archive(mcp):
         dry_run: bool = True,
         reason: Optional[str] = None,
     ) -> dict[str, Any]:
+        # Archive (soft delete). ID list or filters. Foundational always protected.
         """
-        Archive memories (soft delete). Replaces memory_forget and memory_batch_archive.
+        Archive memories. Foundational always protected.
 
-        Supports both explicit ID lists and filter-based archival.
-        Foundational memories are always protected from archival.
-
-        SAFETY: dry_run=True by default — returns preview of what would be archived.
-
-        Args:
-            memory_ids: Explicit list of memory IDs to archive
-            older_than_days: Archive memories older than N days
-            max_access_count: Archive memories with access_count <= N
-            memory_type: Filter by memory type
-            project: Filter by project
-            centrality_protection: Protect high-centrality memories (default True)
-            min_centrality_threshold: In-degree count for protection (default 5)
-            dry_run: Preview only (default True)
-            reason: Archival reason for audit trail
-
-        Returns:
-            Preview (dry_run=True): {would_archive, memories, protected, note}
-            Execute (dry_run=False): {archived, memories, protected}
+        dry_run: True by default (preview).
+        centrality_protection: Protect high-centrality (default True, threshold=5 in-degree).
         """
         return archive_memory(
             memory_ids=memory_ids,

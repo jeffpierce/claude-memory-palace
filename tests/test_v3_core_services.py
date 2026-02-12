@@ -553,8 +553,8 @@ class TestRecall:
         nodes = result["graph_context"]["nodes"]
         assert str(m1["id"]) in nodes or str(m2["id"]) in nodes
 
-        # At least one node should have connections > 0
-        has_connections = any(node["connections"] > 0 for node in nodes.values())
+        # Nodes are now flattened strings like "M1 | 1 connections | avg 0.90 | relates_to"
+        has_connections = any("0 connections" not in v for v in nodes.values())
         assert has_connections, "At least one node should have connections"
 
     def test_updates_access_count(self):
@@ -1292,18 +1292,17 @@ class TestGraphModeSummary:
             # Assert seed_ids contains m1
             assert m1["id"] in result["seed_ids"]
 
-            # Assert node entries have required fields
-            for node_id, node_data in result["nodes"].items():
-                assert "subject" in node_data
-                assert "connections" in node_data
-                assert "avg_strength" in node_data
-                assert "edge_types" in node_data
+            # Assert node entries are flattened pipe-delimited strings
+            for node_id, node_str in result["nodes"].items():
+                assert isinstance(node_str, str), f"Node {node_id} should be a string, got {type(node_str)}"
+                assert " | " in node_str, f"Node string should be pipe-delimited: {node_str}"
 
-            # Check that m1 has the expected edge
+            # Check that m1 has the expected stats in flattened format
             m1_node = result["nodes"][str(m1["id"])]
-            assert m1_node["connections"] == 1
-            assert m1_node["avg_strength"] == 0.9
-            assert "relates_to" in m1_node["edge_types"]
+            assert "1 connections" in m1_node
+            assert "avg 0.90" in m1_node
+            # m1 is the source of the edge to m2, so should be ">relates_to"
+            assert ">relates_to" in m1_node
         finally:
             db.close()
 
@@ -1424,20 +1423,19 @@ class TestGraphModeSummary:
             # Call with summary mode
             result = _get_graph_context_for_memories(db, [mem1], graph_mode="summary")
 
-            # Assert m1's edge_types contains all three types
+            # Assert m1's flattened string contains all three edge types with direction indicators
+            # m1 -> m2 (relates_to): m1 is source, so >relates_to
+            # m1 -> m3 (derived_from): m1 is source, so >derived_from
+            # m2 -> m1 (refines): m1 is target, so <refines
             m1_node = result["nodes"][str(m1["id"])]
-            edge_types = m1_node["edge_types"]
-            assert "relates_to" in edge_types
-            assert "derived_from" in edge_types
-            assert "refines" in edge_types
-            assert len(edge_types) == 3
+            assert isinstance(m1_node, str)
+            assert ">relates_to" in m1_node
+            assert ">derived_from" in m1_node
+            assert "<refines" in m1_node
+            assert "3 connections" in m1_node
 
-            # Verify connections count
-            assert m1_node["connections"] == 3
-
-            # Verify avg_strength is calculated correctly
-            expected_avg = round((0.8 + 0.7 + 0.9) / 3, 4)
-            assert m1_node["avg_strength"] == expected_avg
+            # Verify avg_strength is calculated correctly (0.8 + 0.7 + 0.9) / 3 = 0.8
+            assert "avg 0.80" in m1_node
         finally:
             db.close()
 

@@ -16,21 +16,12 @@ def register_audit(mcp):
         project: Optional[str] = None,
         limit_per_category: int = 20,
     ) -> dict[str, Any]:
+        # Check palace health. Foundational never stale.
         """
-        Audit palace health. Checks for duplicates, stale memories, orphan edges,
-        missing embeddings, and contradictions. Foundational memories are never stale.
+        Audit palace health. Foundational never stale.
 
-        Args:
-            checks: Which checks to run (default all). Valid: duplicates, stale,
-                    orphan_edges, missing_embeddings, contradictions
-            thresholds: Override thresholds dict, e.g. {"duplicate_similarity": 0.92,
-                       "stale_days": 90, "stale_max_access": 2,
-                       "stale_min_centrality": 3}
-            project: Filter by project
-            limit_per_category: Max results per issue type (default 20)
-
-        Returns:
-            Dict with findings per category and summary counts
+        checks: duplicates, stale, orphan_edges, missing_embeddings, contradictions (default all).
+        thresholds: Override defaults, e.g. {"duplicate_similarity": 0.92, "stale_days": 90}.
         """
         return audit_palace(
             checks=checks,

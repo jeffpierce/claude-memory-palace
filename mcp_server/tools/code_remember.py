@@ -16,18 +16,11 @@ def register_code_remember(mcp):
         instance_id: str,
         force: bool = False,
     ) -> dict[str, Any]:
+        # Index source file for NL search. Creates prose (embedded) + raw code (stored).
         """
-        Index a source file for natural language search. Creates linked prose
-        description (embedded) and raw code (stored, not embedded).
+        Index source file. Creates prose (embedded) + raw code.
 
-        Args:
-            code_path: Absolute path to the source file
-            project: Project this code belongs to
-            instance_id: Which instance is indexing
-            force: Re-index even if already indexed (default False)
-
-        Returns:
-            {prose_id, code_id, subject, language, patterns} or {error}
+        force: Re-index if already indexed (default False).
         """
         return code_remember(
             code_path=code_path,

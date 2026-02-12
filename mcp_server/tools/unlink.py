@@ -17,19 +17,11 @@ def register_unlink(mcp):
         target_id: int,
         relation_type: Optional[str] = None
     ) -> dict[str, Any]:
+        # Remove edge(s). relation_type=None removes ALL edges source→target.
         """
-        Remove relationship edge(s) between two memories.
+        Remove edge(s) between memories.
 
-        If relation_type is specified, only removes that edge.
-        If relation_type is None, removes ALL edges from source to target.
-
-        Args:
-            source_id: ID of the source memory
-            target_id: ID of the target memory
-            relation_type: Specific relation to remove (optional - all if None)
-
-        Returns:
-            Dict with count of removed edges
+        relation_type: Specific type or None=ALL.
         """
         return unlink_memories(
             source_id=source_id,

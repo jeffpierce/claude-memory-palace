@@ -25,35 +25,19 @@ def register_remember(mcp):
         supersedes_id: Optional[int] = None,
         auto_link: Optional[bool] = None
     ) -> dict[str, Any]:
+        # Store new memory. Auto-links similar memories (>=0.75 creates edge, 0.675-0.75 suggests).
+        # For explicit relationships, use supersedes_id or memory_link.
         """
-        Store a new memory in the memory palace.
+        Store new memory in palace.
 
-        AUTO-LINKING (two tiers):
-        - **Auto-linked** (>= 0.75 similarity): Edges created automatically with LLM-classified types.
-          Returned in `links_created`.
-        - **Suggested** (0.675–0.75 similarity): Surfaced for human review, no edges created.
-          Returned in `suggested_links` — present these to the user if relevant.
+        AUTO-LINKING: >=0.75 similarity auto-creates edges (LLM-typed, in links_created). 0.675-0.75 returns suggested_links for review.
+        Use supersedes_id or memory_link for explicit relationships.
 
-        For explicit supersession or other typed relationships, use supersedes_id or memory_link.
+        memory_type: Open-ended. Common: fact, preference, event, insight, architecture, gotcha, solution, design_decision.
+        foundational: Never archived (default False).
+        supersedes_id: Create supersedes edge + archive target. Only when user confirms.
 
-        Args:
-            instance_id: Which instance is storing this (e.g., "desktop", "code", "web")
-            memory_type: Type of memory (open-ended - use existing types or create new ones like: fact, preference, event, context, insight, relationship, architecture, gotcha, blocker, solution, workaround, design_decision)
-            content: The actual memory content
-            subject: What/who this memory is about (optional but recommended)
-            keywords: List of keywords for searchability
-            tags: Freeform organizational tags (separate from keywords)
-            foundational: True if this is a foundational/core memory that should never be archived (default False)
-            project: Project this memory belongs to. Can be a string (single project) or list of strings (multi-project). Default "life".
-            source_type: How this memory was created (conversation, explicit, inferred, observation)
-            source_context: Snippet of original context
-            source_session_id: Link back to conversation session
-            supersedes_id: If set, create a 'supersedes' edge to this memory and archive it. Only use when the user explicitly confirms supersession.
-            auto_link: Override config to enable/disable similarity-based auto-linking (None = use config)
-
-        Returns:
-            Dict with id, subject, embedded status, links_created (auto edges), and
-            suggested_links (sub-threshold candidates for human review)
+        Returns: {id, subject, embedded, links_created, suggested_links}
         """
         return remember(
             instance_id=instance_id,
