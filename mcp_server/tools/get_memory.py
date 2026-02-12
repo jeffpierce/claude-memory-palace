@@ -20,7 +20,8 @@ def register_get_memory(mcp):
         max_depth: int = 3,
         direction: Optional[str] = None,
         relation_types: Optional[List[str]] = None,
-        min_strength: Optional[float] = None
+        min_strength: Optional[float] = None,
+        graph_mode: str = "summary"
     ) -> dict[str, Any]:
         """
         Retrieve one or more memories by their IDs with optional graph traversal.
@@ -41,12 +42,14 @@ def register_get_memory(mcp):
             direction: "outgoing", "incoming", or None for both (applies to graph context and traversal)
             relation_types: Filter edges by type (e.g., ["related_to", "supersedes"])
             min_strength: Filter edges by minimum strength (0.0-1.0)
+            graph_mode: "summary" for per-node stats, "full" for raw edge list (default "summary")
 
         Returns:
             For single ID: {"memory": dict, "graph_context": dict (optional)} or {"error": str} if not found
             For multiple IDs (synthesize=False): {"memories": list[dict], "count": int, "not_found": list[int], "graph_context": dict (optional)}
             For multiple IDs (synthesize=True): {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int], "graph_context": dict (optional)}
-            graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+            If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+            If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
         """
         # Normalize to list
         if isinstance(memory_ids, int):
@@ -67,7 +70,8 @@ def register_get_memory(mcp):
                 max_depth=max_depth,
                 direction=direction,
                 relation_types=relation_types,
-                min_strength=min_strength
+                min_strength=min_strength,
+                graph_mode=graph_mode
             )
             if result:
                 return result  # Already has {"memory": ..., "graph_context": ...} format
@@ -82,5 +86,6 @@ def register_get_memory(mcp):
             detail_level=detail_level,
             synthesize=synthesize,
             include_graph=include_graph,
-            graph_depth=graph_depth
+            graph_depth=graph_depth,
+            graph_mode=graph_mode
         )

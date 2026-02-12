@@ -55,7 +55,8 @@ def _get_graph_context_for_memories(
     max_depth: int = 1,
     direction: Optional[str] = None,
     relation_types: Optional[List[str]] = None,
-    min_strength: Optional[float] = None
+    min_strength: Optional[float] = None,
+    graph_mode: str = "summary"
 ) -> Dict[str, Any]:
     """
     Fetch deduplicated graph context for a list of memories using BFS frontier expansion.
@@ -70,9 +71,11 @@ def _get_graph_context_for_memories(
         direction: "outgoing", "incoming", or None for both
         relation_types: List of relation types to follow (optional - all if None)
         min_strength: Minimum edge strength to follow (optional)
+        graph_mode: "summary" for per-node stats, "full" for raw edge list (default "summary")
 
     Returns:
-        {"nodes": {id: subject, ...}, "edges": [{source, target, type, strength}, ...]}
+        If graph_mode == "full": {"nodes": {id: subject, ...}, "edges": [{source, target, type, strength}, ...]}
+        If graph_mode == "summary": {"nodes": {id: {subject, connections, avg_strength, edge_types}, ...}, "total_edges": int, "seed_ids": list}
         Returns {} if no edges found.
     """
     if not memories:
@@ -156,7 +159,54 @@ def _get_graph_context_for_memories(
 
         frontier_ids = next_frontier
 
-    return {"nodes": nodes, "edges": edges} if edges else {}
+    # Return based on graph_mode
+    if not edges:
+        return {}
+
+    if graph_mode == "full":
+        return {"nodes": nodes, "edges": edges}
+
+    # graph_mode == "summary": aggregate per-node stats
+    seed_ids = [m.id for m in memories]
+    node_stats: Dict[str, Dict[str, Any]] = {}
+    for node_id, subject in nodes.items():
+        # Count edges involving this node
+        node_edges = [e for e in edges if str(e["source"]) == node_id or str(e["target"]) == node_id]
+        if not node_edges:
+            # Include seed nodes even with no edges
+            if int(node_id) in seed_ids:
+                node_stats[node_id] = {
+                    "subject": subject,
+                    "connections": 0,
+                    "avg_strength": 0,
+                    "edge_types": []
+                }
+            continue
+        strengths = [e["strength"] for e in node_edges]
+        edge_types = sorted(set(e["type"] for e in node_edges))
+        node_stats[node_id] = {
+            "subject": subject,
+            "connections": len(node_edges),
+            "avg_strength": round(sum(strengths) / len(strengths), 4),
+            "edge_types": edge_types
+        }
+
+    # Cap summary to top N nodes by connection count (seeds always included)
+    MAX_SUMMARY_NODES = 30
+    if len(node_stats) > MAX_SUMMARY_NODES:
+        seed_id_strs = {str(sid) for sid in seed_ids}
+        # Separate seeds (always kept) from non-seeds
+        seed_entries = {k: v for k, v in node_stats.items() if k in seed_id_strs}
+        non_seed_entries = [(k, v) for k, v in node_stats.items() if k not in seed_id_strs]
+        # Sort non-seeds by connections descending
+        non_seed_entries.sort(key=lambda x: x[1]["connections"], reverse=True)
+        # Take top N minus however many seeds we have
+        remaining_slots = MAX_SUMMARY_NODES - len(seed_entries)
+        top_non_seeds = dict(non_seed_entries[:remaining_slots])
+        omitted = len(node_stats) - len(seed_entries) - len(top_non_seeds)
+        node_stats = {**seed_entries, **top_non_seeds}
+        return {"nodes": node_stats, "total_edges": len(edges), "seed_ids": seed_ids, "omitted_nodes": omitted}
+    return {"nodes": node_stats, "total_edges": len(edges), "seed_ids": seed_ids} if node_stats else {}
 
 
 def _compute_in_degree_centrality(db, memory_ids: List[int]) -> Dict[int, float]:
@@ -635,7 +685,8 @@ def recall(
     synthesize: bool = True,
     include_graph: bool = True,
     graph_top_n: int = 5,
-    graph_depth: int = 1
+    graph_depth: int = 1,
+    graph_mode: str = "summary"
 ) -> Dict[str, Any]:
     """
     Search memories using semantic search (with keyword fallback).
@@ -875,7 +926,7 @@ def recall(
 
         # Fetch graph context if requested
         graph_context = _get_graph_context_for_memories(
-            db, memories[:graph_top_n], max_depth=graph_depth
+            db, memories[:graph_top_n], max_depth=graph_depth, graph_mode=graph_mode
         ) if include_graph and memories else {}
 
         # Return raw memories if synthesize=False
@@ -1273,7 +1324,8 @@ def get_memory_by_id(
     max_depth: int = 3,
     direction: Optional[str] = None,
     relation_types: Optional[List[str]] = None,
-    min_strength: Optional[float] = None
+    min_strength: Optional[float] = None,
+    graph_mode: str = "summary"
 ) -> Optional[Dict[str, Any]]:
     """
     Get a single memory by ID with optional graph traversal.
@@ -1290,10 +1342,12 @@ def get_memory_by_id(
         direction: "outgoing", "incoming", or None for both (only used if traverse=True or include_graph=True)
         relation_types: Filter edges by type (only used if traverse=True or include_graph=True)
         min_strength: Filter edges by minimum strength (only used if traverse=True or include_graph=True)
+        graph_mode: "summary" for per-node stats, "full" for raw edge list (default "summary")
 
     Returns:
         {"memory": dict, "graph_context": dict (optional)} if found, None if not found
-        graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+        If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+        If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
     """
     db = get_session()
     try:
@@ -1308,6 +1362,10 @@ def get_memory_by_id(
 
         # Build result with memory dict
         result = {"memory": memory.to_dict(detail_level=detail_level)}
+
+        # Foundational memories are hubs — clamp to depth 1 to avoid graph explosion
+        if memory.foundational and graph_depth > 1:
+            graph_depth = 1
 
         # Fetch graph context if requested
         if include_graph and graph_depth > 0:
@@ -1331,7 +1389,8 @@ def get_memory_by_id(
                     max_depth=graph_depth,
                     direction=direction,
                     relation_types=relation_types,
-                    min_strength=min_strength
+                    min_strength=min_strength,
+                    graph_mode=graph_mode
                 )
                 if graph_context:
                     result["graph_context"] = graph_context
@@ -1346,7 +1405,8 @@ def get_memories_by_ids(
     detail_level: str = "verbose",
     synthesize: bool = False,
     include_graph: bool = True,
-    graph_depth: int = 1
+    graph_depth: int = 1,
+    graph_mode: str = "summary"
 ) -> Dict[str, Any]:
     """
     Get multiple memories by ID, with optional LLM synthesis.
@@ -1360,11 +1420,13 @@ def get_memories_by_ids(
             a top-N subset. This is intentional - these are targeted fetches where the user
             wants full context for specific memories.
         graph_depth: How many hops to follow in graph context (1-3, default 1)
+        graph_mode: "summary" for per-node stats, "full" for raw edge list (default "summary")
 
     Returns:
         If synthesize=False: {"memories": list[dict], "count": int, "not_found": list[int], "graph_context": dict (optional)}
         If synthesize=True: {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int], "graph_context": dict (optional)}
-        graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+        If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+        If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
     """
     db = get_session()
     try:
@@ -1382,7 +1444,7 @@ def get_memories_by_ids(
         db.commit()
 
         # Fetch graph context if requested (for ALL found memories)
-        graph_context = _get_graph_context_for_memories(db, memories, max_depth=graph_depth) if include_graph and memories else {}
+        graph_context = _get_graph_context_for_memories(db, memories, max_depth=graph_depth, graph_mode=graph_mode) if include_graph and memories else {}
 
         # Skip synthesis for single memory (pointless) or empty results
         if synthesize and len(memories) > 1:

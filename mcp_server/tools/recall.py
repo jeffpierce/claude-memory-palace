@@ -23,7 +23,8 @@ def register_recall(mcp):
         synthesize: bool = True,
         include_graph: bool = True,
         graph_top_n: int = 5,
-        graph_depth: int = 1
+        graph_depth: int = 1,
+        graph_mode: str = "summary"
     ) -> dict[str, Any]:
         """
         Search memories using semantic search (with keyword fallback).
@@ -44,13 +45,15 @@ def register_recall(mcp):
             include_graph: Include graph context for top N results (default True)
             graph_top_n: Number of top results to fetch graph context for (default 5)
             graph_depth: How many hops to follow in graph context (1-3, default 1)
+            graph_mode: "summary" for per-node stats, "full" for raw edge list (default "summary")
 
         Returns:
             Dictionary with format depending on synthesize parameter:
             - synthesize=True: {"summary": str, "count": int, "search_method": str, "memory_ids": list, "graph_context": dict (optional)}
             - synthesize=False: {"memories": list[dict], "count": int, "search_method": str, "graph_context": dict (optional)}
               Raw mode always returns verbose content with similarity_score when available.
-              graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+              If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
+              If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
         """
         return recall(
             query=query,
@@ -65,5 +68,6 @@ def register_recall(mcp):
             synthesize=synthesize,
             include_graph=include_graph,
             graph_top_n=graph_top_n,
-            graph_depth=graph_depth
+            graph_depth=graph_depth,
+            graph_mode=graph_mode
         )

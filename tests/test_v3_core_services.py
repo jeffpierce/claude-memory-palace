@@ -527,7 +527,7 @@ class TestRecall:
         assert result["memories"][0]["id"] == m_found["id"]
 
     def test_includes_graph_context_in_results(self):
-        """Includes graph context in results with semantic search."""
+        """Includes graph context in results with semantic search (summary mode by default)."""
         from memory_palace.services.memory_service import remember, recall
         from memory_palace.services.graph_service import link_memories
 
@@ -543,13 +543,19 @@ class TestRecall:
 
         assert result["count"] >= 2, f"Expected at least 2 memories, got {result['count']}"
         assert "graph_context" in result, "Should include graph_context when include_graph=True"
-        assert "edges" in result["graph_context"]
-        assert len(result["graph_context"]["edges"]) > 0, "Should have at least one edge"
 
-        # Verify the edge connects m1 and m2
-        edge = result["graph_context"]["edges"][0]
-        assert edge["source"] == m1["id"] or edge["source"] == m2["id"]
-        assert edge["target"] == m1["id"] or edge["target"] == m2["id"]
+        # With summary mode (default), should have nodes with stats and total_edges
+        assert "nodes" in result["graph_context"]
+        assert "total_edges" in result["graph_context"]
+        assert result["graph_context"]["total_edges"] > 0, "Should have at least one edge"
+
+        # Verify both nodes are in the graph context with connection info
+        nodes = result["graph_context"]["nodes"]
+        assert str(m1["id"]) in nodes or str(m2["id"]) in nodes
+
+        # At least one node should have connections > 0
+        has_connections = any(node["connections"] > 0 for node in nodes.values())
+        assert has_connections, "At least one node should have connections"
 
     def test_updates_access_count(self):
         """Updates access_count on retrieved memories."""
@@ -1251,3 +1257,213 @@ class TestMultiProject:
             # Should auto-link because projects overlap on "palace" and similarity > threshold
             assert "links_created" in second, "Should auto-link when projects overlap"
             assert len(second["links_created"]) > 0
+
+
+class TestGraphModeSummary:
+    """Tests for graph_mode parameter in _get_graph_context_for_memories()."""
+
+    def test_summary_mode_returns_node_stats(self):
+        """Summary mode returns node stats with subject, connections, avg_strength, edge_types."""
+        from memory_palace.services.memory_service import remember, _get_graph_context_for_memories
+        from memory_palace.services.graph_service import link_memories
+        from memory_palace.database import get_session
+
+        # Create two memories with an edge between them
+        m1 = remember(instance_id="test", memory_type="fact", content="Memory 1", subject="M1")
+        m2 = remember(instance_id="test", memory_type="fact", content="Memory 2", subject="M2")
+        link_memories(m1["id"], m2["id"], "relates_to", strength=0.9)
+
+        db = get_session()
+        try:
+            # Get memory objects
+            mem1 = db.query(Memory).filter(Memory.id == m1["id"]).first()
+
+            # Call with summary mode
+            result = _get_graph_context_for_memories(db, [mem1], graph_mode="summary")
+
+            # Assert structure
+            assert "nodes" in result
+            assert "total_edges" in result
+            assert "seed_ids" in result
+
+            # Assert omitted_nodes is NOT present when under 30 nodes
+            assert "omitted_nodes" not in result, "omitted_nodes should only appear when capping happens"
+
+            # Assert seed_ids contains m1
+            assert m1["id"] in result["seed_ids"]
+
+            # Assert node entries have required fields
+            for node_id, node_data in result["nodes"].items():
+                assert "subject" in node_data
+                assert "connections" in node_data
+                assert "avg_strength" in node_data
+                assert "edge_types" in node_data
+
+            # Check that m1 has the expected edge
+            m1_node = result["nodes"][str(m1["id"])]
+            assert m1_node["connections"] == 1
+            assert m1_node["avg_strength"] == 0.9
+            assert "relates_to" in m1_node["edge_types"]
+        finally:
+            db.close()
+
+    def test_full_mode_returns_existing_format(self):
+        """Full mode returns existing format with nodes (id->subject) and edges list."""
+        from memory_palace.services.memory_service import remember, _get_graph_context_for_memories
+        from memory_palace.services.graph_service import link_memories
+        from memory_palace.database import get_session
+
+        # Create two memories with an edge between them
+        m1 = remember(instance_id="test", memory_type="fact", content="Memory 1", subject="M1")
+        m2 = remember(instance_id="test", memory_type="fact", content="Memory 2", subject="M2")
+        link_memories(m1["id"], m2["id"], "relates_to", strength=0.8)
+
+        db = get_session()
+        try:
+            # Get memory objects
+            mem1 = db.query(Memory).filter(Memory.id == m1["id"]).first()
+
+            # Call with full mode
+            result = _get_graph_context_for_memories(db, [mem1], graph_mode="full")
+
+            # Assert structure
+            assert "nodes" in result
+            assert "edges" in result
+            assert "total_edges" not in result  # Should not have summary fields
+
+            # Assert nodes is dict of id->subject string
+            assert isinstance(result["nodes"], dict)
+            assert str(m1["id"]) in result["nodes"]
+            assert isinstance(result["nodes"][str(m1["id"])], str)
+            assert result["nodes"][str(m1["id"])] == "M1"
+
+            # Assert edges is list of dicts with source/target/type/strength
+            assert isinstance(result["edges"], list)
+            assert len(result["edges"]) > 0
+
+            edge = result["edges"][0]
+            assert "source" in edge
+            assert "target" in edge
+            assert "type" in edge
+            assert "strength" in edge
+            assert edge["source"] == m1["id"]
+            assert edge["target"] == m2["id"]
+            assert edge["type"] == "relates_to"
+            assert edge["strength"] == 0.8
+        finally:
+            db.close()
+
+    def test_summary_mode_is_default(self):
+        """Summary mode is the default when graph_mode is not specified."""
+        from memory_palace.services.memory_service import remember, _get_graph_context_for_memories
+        from memory_palace.services.graph_service import link_memories
+        from memory_palace.database import get_session
+
+        # Create two memories with an edge between them
+        m1 = remember(instance_id="test", memory_type="fact", content="Memory 1", subject="M1")
+        m2 = remember(instance_id="test", memory_type="fact", content="Memory 2", subject="M2")
+        link_memories(m1["id"], m2["id"], "relates_to")
+
+        db = get_session()
+        try:
+            # Get memory objects
+            mem1 = db.query(Memory).filter(Memory.id == m1["id"]).first()
+
+            # Call without specifying graph_mode (should default to "summary")
+            result = _get_graph_context_for_memories(db, [mem1])
+
+            # Assert it has summary format (total_edges key)
+            assert "total_edges" in result, "Should default to summary mode"
+            assert "nodes" in result
+            assert "seed_ids" in result
+        finally:
+            db.close()
+
+    def test_summary_no_edges_returns_empty(self):
+        """Summary mode returns empty dict when memory has no edges."""
+        from memory_palace.services.memory_service import remember, _get_graph_context_for_memories
+        from memory_palace.database import get_session
+
+        # Create a memory with no edges
+        m1 = remember(instance_id="test", memory_type="fact", content="Isolated Memory", subject="Isolated")
+
+        db = get_session()
+        try:
+            # Get memory object
+            mem1 = db.query(Memory).filter(Memory.id == m1["id"]).first()
+
+            # Call with summary mode
+            result = _get_graph_context_for_memories(db, [mem1], graph_mode="summary")
+
+            # Assert returns empty dict
+            assert result == {}
+        finally:
+            db.close()
+
+    def test_summary_multiple_edge_types(self):
+        """Summary mode edge_types list contains all unique edge types."""
+        from memory_palace.services.memory_service import remember, _get_graph_context_for_memories
+        from memory_palace.services.graph_service import link_memories
+        from memory_palace.database import get_session
+
+        # Create three memories with different edge types
+        m1 = remember(instance_id="test", memory_type="fact", content="Memory 1", subject="M1")
+        m2 = remember(instance_id="test", memory_type="fact", content="Memory 2", subject="M2")
+        m3 = remember(instance_id="test", memory_type="fact", content="Memory 3", subject="M3")
+
+        # Create edges of different types
+        link_memories(m1["id"], m2["id"], "relates_to", strength=0.8)
+        link_memories(m1["id"], m3["id"], "derived_from", strength=0.7)
+        link_memories(m2["id"], m1["id"], "refines", strength=0.9)
+
+        db = get_session()
+        try:
+            # Get memory object
+            mem1 = db.query(Memory).filter(Memory.id == m1["id"]).first()
+
+            # Call with summary mode
+            result = _get_graph_context_for_memories(db, [mem1], graph_mode="summary")
+
+            # Assert m1's edge_types contains all three types
+            m1_node = result["nodes"][str(m1["id"])]
+            edge_types = m1_node["edge_types"]
+            assert "relates_to" in edge_types
+            assert "derived_from" in edge_types
+            assert "refines" in edge_types
+            assert len(edge_types) == 3
+
+            # Verify connections count
+            assert m1_node["connections"] == 3
+
+            # Verify avg_strength is calculated correctly
+            expected_avg = round((0.8 + 0.7 + 0.9) / 3, 4)
+            assert m1_node["avg_strength"] == expected_avg
+        finally:
+            db.close()
+
+
+class TestFoundationalGraphClamp:
+    """Tests for foundational memory graph depth clamping."""
+
+    def test_foundational_memory_clamps_depth(self):
+        """Foundational memories clamp graph_depth to 1 even if requested higher."""
+        from memory_palace.services.memory_service import remember, get_memory_by_id
+
+        # Create a foundational memory
+        m = remember(
+            instance_id="test",
+            memory_type="core",
+            content="Foundational core concept",
+            subject="Core concept",
+            foundational=True
+        )
+
+        # Call get_memory_by_id with graph_depth=2 (which would normally explore 2 hops)
+        # This should not error — the depth should be clamped internally
+        result = get_memory_by_id(m["id"], include_graph=True, graph_depth=2)
+
+        # Happy path test: just verify it doesn't error and returns the memory
+        assert result is not None
+        assert "memory" in result
+        assert result["memory"]["id"] == m["id"]
+        assert result["memory"]["foundational"] is True
