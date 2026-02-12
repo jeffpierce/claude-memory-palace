@@ -26,34 +26,16 @@ def register_recall(mcp):
         graph_depth: int = 1,
         graph_mode: str = "summary"
     ) -> dict[str, Any]:
+        # Semantic search (keyword fallback). Centrality-weighted ranking.
         """
-        Search memories using semantic search (with keyword fallback).
+        Semantic search (keyword fallback). Centrality-weighted ranking.
 
-        Uses centrality-weighted ranking combining semantic similarity, access frequency, and graph centrality.
+        query: Semantic when Ollama available, else keyword.
+        memory_type: Supports wildcards like "code_*".
+        synthesize: True=LLM synthesis (default), False=raw objects for cloud AI.
+        graph_top_n: Fetch graph context for top N results (default 5).
 
-        Args:
-            query: Search query - uses semantic similarity when Ollama is available, falls back to keyword matching
-            instance_id: Filter by instance (optional)
-            project: Filter by project (optional, e.g., "memory-palace", "wordleap", "life"). Can be a string or list of strings.
-            memory_type: Filter by type (e.g., fact, preference, event, context, insight, relationship, architecture, gotcha, blocker, solution, workaround, design_decision, or any custom type). Supports wildcards like "code_*" for pattern matching.
-            subject: Filter by subject
-            min_foundational: Only return foundational memories if True (optional)
-            include_archived: Include archived memories (default false)
-            limit: Maximum memories to return (default 20)
-            detail_level: "summary" for condensed, "verbose" for full content (only applies when synthesize=True)
-            synthesize: If True (default), use local LLM to synthesize results. If False, return raw memory objects with full content for cloud AI to process.
-            include_graph: Include graph context for top N results (default True)
-            graph_top_n: Number of top results to fetch graph context for (default 5)
-            graph_depth: How many hops to follow in graph context (1-3, default 1)
-            graph_mode: "summary" for per-node stats, "full" for raw edge list (default "summary")
-
-        Returns:
-            Dictionary with format depending on synthesize parameter:
-            - synthesize=True: {"summary": str, "count": int, "search_method": str, "memory_ids": list, "graph_context": dict (optional)}
-            - synthesize=False: {"memories": list[dict], "count": int, "search_method": str, "graph_context": dict (optional)}
-              Raw mode always returns verbose content with similarity_score when available.
-              If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
-              If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
+        See memory_get for graph_mode format details.
         """
         return recall(
             query=query,

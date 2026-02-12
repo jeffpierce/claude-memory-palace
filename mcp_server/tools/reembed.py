@@ -19,23 +19,12 @@ def register_reembed(mcp):
         batch_size: int = 50,
         dry_run: bool = True,
     ) -> dict[str, Any]:
+        # Regenerate embeddings. missing_only=True for backfill (replaces memory_backfill_embeddings).
         """
-        Regenerate embeddings for memories. Use missing_only=True to backfill
-        memories without embeddings (replaces memory_backfill_embeddings).
+        Regenerate embeddings.
 
-        SAFETY: dry_run=True by default.
-
-        Args:
-            older_than_days: Re-embed embeddings older than N days
-            memory_ids: Explicit list of memory IDs to re-embed
-            project: Filter by project
-            all_memories: Re-embed everything (use with caution)
-            missing_only: Only embed memories with NULL embeddings (backfill mode)
-            batch_size: Processing batch size (default 50)
-            dry_run: Preview only (default True)
-
-        Returns:
-            Preview or execution results with counts
+        missing_only: Backfill NULL embeddings.
+        dry_run: True by default.
         """
         return reembed_memories(
             older_than_days=older_than_days,

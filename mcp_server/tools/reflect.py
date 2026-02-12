@@ -16,17 +16,11 @@ def register_reflect(mcp):
         session_id: Optional[str] = None,
         dry_run: bool = False,
     ) -> dict[str, Any]:
+        # Extract memories from transcript using LLM.
         """
-        Extract memories from a conversation transcript using LLM.
+        Extract memories from transcript (JSONL or TOON format).
 
-        Args:
-            instance_id: Which instance is reflecting
-            transcript_path: Path to transcript file (JSONL or TOON format)
-            session_id: Optional session ID to link memories to source
-            dry_run: Report what would be stored without writing (default False)
-
-        Returns:
-            {extracted_count, embedded_count, types_breakdown}
+        dry_run: Report without writing (default False).
         """
         return reflect(
             instance_id=instance_id,

@@ -76,6 +76,7 @@ def _get_graph_context_for_memories(
     Returns:
         If graph_mode == "full": {"nodes": {id: subject, ...}, "edges": [{source, target, type, strength}, ...]}
         If graph_mode == "summary": {"nodes": {id: {subject, connections, avg_strength, edge_types}, ...}, "total_edges": int, "seed_ids": list}
+            edge_types include direction indicators: > (outgoing), < (incoming), <> (bidirectional)
         Returns {} if no edges found.
     """
     if not memories:
@@ -183,12 +184,39 @@ def _get_graph_context_for_memories(
                 }
             continue
         strengths = [e["strength"] for e in node_edges]
-        edge_types = sorted(set(e["type"] for e in node_edges))
+
+        # Track edge types with direction indicators
+        # > = outgoing (this node is source)
+        # < = incoming (this node is target)
+        # <> = bidirectional (appears as both source and target for this type)
+        edge_type_directions: Dict[str, set] = {}
+        for e in node_edges:
+            edge_type = e["type"]
+            if edge_type not in edge_type_directions:
+                edge_type_directions[edge_type] = set()
+
+            if str(e["source"]) == node_id:
+                edge_type_directions[edge_type].add(">")
+            if str(e["target"]) == node_id:
+                edge_type_directions[edge_type].add("<")
+
+        # Format edge types with direction indicators
+        edge_types_with_dir = []
+        for edge_type in sorted(edge_type_directions.keys()):
+            directions = edge_type_directions[edge_type]
+            if directions == {">", "<"}:
+                prefix = "<>"
+            elif ">" in directions:
+                prefix = ">"
+            else:  # "<" in directions
+                prefix = "<"
+            edge_types_with_dir.append(f"{prefix}{edge_type}")
+
         node_stats[node_id] = {
             "subject": subject,
             "connections": len(node_edges),
             "avg_strength": round(sum(strengths) / len(strengths), 4),
-            "edge_types": edge_types
+            "edge_types": edge_types_with_dir
         }
 
     # Cap summary to top N nodes by connection count (seeds always included)
@@ -205,8 +233,33 @@ def _get_graph_context_for_memories(
         top_non_seeds = dict(non_seed_entries[:remaining_slots])
         omitted = len(node_stats) - len(seed_entries) - len(top_non_seeds)
         node_stats = {**seed_entries, **top_non_seeds}
-        return {"nodes": node_stats, "total_edges": len(edges), "seed_ids": seed_ids, "omitted_nodes": omitted}
-    return {"nodes": node_stats, "total_edges": len(edges), "seed_ids": seed_ids} if node_stats else {}
+        flat = _flatten_node_stats(node_stats)
+        return {"nodes": flat, "total_edges": len(edges), "seed_ids": seed_ids, "omitted_nodes": omitted}
+    if not node_stats:
+        return {}
+    flat = _flatten_node_stats(node_stats)
+    return {"nodes": flat, "total_edges": len(edges), "seed_ids": seed_ids}
+
+
+def _flatten_node_stats(node_stats: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    """Flatten per-node stat dicts into pipe-delimited strings for compact TOON output.
+
+    Converts: {"subject": "Foo", "connections": 5, "avg_strength": 0.87, "edge_types": [">a", "<b"]}
+    Into:     "Foo | 5 connections | avg 0.87 | >a,<b"
+
+    Edge types include direction indicators:
+      > = outgoing (this node is source)
+      < = incoming (this node is target)
+      <> = bidirectional (this node appears as both source and target for this type)
+    """
+    flat: Dict[str, str] = {}
+    for node_id, stats in node_stats.items():
+        types_str = ",".join(stats["edge_types"]) if stats["edge_types"] else "none"
+        flat[node_id] = (
+            f"{stats['subject']} | {stats['connections']} connections "
+            f"| avg {stats['avg_strength']:.2f} | {types_str}"
+        )
+    return flat
 
 
 def _compute_in_degree_centrality(db, memory_ids: List[int]) -> Dict[int, float]:

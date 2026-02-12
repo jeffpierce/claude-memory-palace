@@ -23,33 +23,19 @@ def register_get_memory(mcp):
         min_strength: Optional[float] = None,
         graph_mode: str = "summary"
     ) -> dict[str, Any]:
+        # Fetch memories by ID with optional graph context.
+        # Use when you have specific memory IDs (e.g., from handoff messages: "Memory 151").
         """
-        Retrieve one or more memories by their IDs with optional graph traversal.
+        Fetch memories by ID with optional graph context.
 
-        Use this when you have specific memory IDs to retrieve, such as from
-        handoff messages that reference specific memories (e.g., "Memory 151").
+        synthesize: LLM-synthesize multiple memories (skipped for single). Default False.
+        graph_depth: 1-3 hops. Use 2 for bootstrap.
+        traverse: BFS walk instead of context mode.
+        direction: "outgoing", "incoming", None=both.
 
-        Args:
-            memory_ids: Single memory ID (int) or list of memory IDs to retrieve
-            detail_level: "summary" for condensed, "verbose" for full content (default: verbose)
-            synthesize: If True, use LLM to synthesize multiple memories into natural language summary.
-                       Skipped for single memory (pointless). Default: False (returns raw memory objects).
-            include_graph: Include graph context for all retrieved memories (default True)
-            graph_depth: How many hops to follow in graph context (1-3, default 1).
-                        Use 2 for bootstrap/startup to see the broader neighborhood.
-            traverse: If True, do BFS traversal instead of context mode (replaces memory_graph tool)
-            max_depth: Max depth for BFS traverse (1-5, only used if traverse=True)
-            direction: "outgoing", "incoming", or None for both (applies to graph context and traversal)
-            relation_types: Filter edges by type (e.g., ["related_to", "supersedes"])
-            min_strength: Filter edges by minimum strength (0.0-1.0)
-            graph_mode: "summary" for per-node stats, "full" for raw edge list (default "summary")
-
-        Returns:
-            For single ID: {"memory": dict, "graph_context": dict (optional)} or {"error": str} if not found
-            For multiple IDs (synthesize=False): {"memories": list[dict], "count": int, "not_found": list[int], "graph_context": dict (optional)}
-            For multiple IDs (synthesize=True): {"summary": str, "count": int, "memory_ids": list[int], "not_found": list[int], "graph_context": dict (optional)}
-            If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
-            If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
+        graph_mode "summary" (default): Nodes are flattened strings: "subject | N connections | avg S | >type,<type,<>type"
+        Direction indicators (>,<,<>) invisible to users — translate to plain language when explaining ("links to", "linked from").
+        graph_mode "full": {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
         """
         # Normalize to list
         if isinstance(memory_ids, int):
