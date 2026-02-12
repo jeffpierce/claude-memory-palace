@@ -154,96 +154,118 @@ class TestOpenClawWake:
 
         mock_urlopen.assert_called_once()
         req = mock_urlopen.call_args[0][0]
-        assert req.full_url == "http://localhost:18789/hooks/agent"
+        assert req.full_url == "http://localhost:18789/hooks/palace"
         assert req.method == "POST"
         assert req.get_header("Content-type") == "application/json"
         assert req.get_header("Authorization") == "Bearer test-token-abc"
 
     @patch("urllib.request.urlopen")
-    def test_wake_payload_contains_message_and_wakemode(
+    def test_wake_payload_contains_structured_fields(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Verify the JSON payload has correct message, wakeMode, and sessionKey."""
+        """Verify the JSON payload has correct structured fields for /hooks/palace."""
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert "Palace message from code" in payload["message"]
-        assert "Task completed" in payload["message"]
-        assert "msg #42" in payload["message"]
-        assert payload["wakeMode"] == "now"  # priority=5 >= 5
-        assert payload["sessionKey"] == "agent:main:main"
+        assert payload["from_instance"] == "code"
+        assert payload["to_instance"] == "prime"
+        assert payload["message_type"] == "handoff"
+        assert payload["subject"] == "Task completed"
+        assert payload["message_id"] == 42
+        assert payload["priority"] == 5
 
     @patch("urllib.request.urlopen")
-    def test_priority_below_5_uses_next_heartbeat(
+    def test_payload_includes_priority(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Priority < 5 should use mode 'next-heartbeat'."""
+        """Priority is passed through in the payload."""
         wake_params["priority"] = 4
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["wakeMode"] == "next-heartbeat"
+        assert payload["priority"] == 4
 
     @patch("urllib.request.urlopen")
-    def test_priority_5_uses_now(
+    def test_priority_5_in_payload(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Priority == 5 should use wakeMode 'now'."""
+        """Priority == 5 is included in payload."""
         wake_params["priority"] = 5
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["wakeMode"] == "now"
+        assert payload["priority"] == 5
 
     @patch("urllib.request.urlopen")
-    def test_priority_10_uses_now(
+    def test_priority_10_in_payload(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Priority == 10 (max) should use wakeMode 'now'."""
+        """Priority == 10 (max) is included in payload."""
         wake_params["priority"] = 10
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["wakeMode"] == "now"
+        assert payload["priority"] == 10
 
     @patch("urllib.request.urlopen")
-    def test_priority_0_uses_next_heartbeat(
+    def test_priority_0_in_payload(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """Priority == 0 (default) should use wakeMode 'next-heartbeat'."""
+        """Priority == 0 (default) is included in payload."""
         wake_params["priority"] = 0
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert payload["wakeMode"] == "next-heartbeat"
+        assert payload["priority"] == 0
 
     @patch("urllib.request.urlopen")
-    def test_none_subject_falls_back_to_message_type(
+    def test_none_subject_passes_through(
         self, mock_urlopen, execute_wake, sample_route, wake_params
     ):
-        """When subject is None, wake text uses message_type instead."""
+        """When subject is None, it's passed as null in payload."""
         wake_params["subject"] = None
         execute_wake(route=sample_route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
-        assert "handoff" in payload["message"]
+        assert payload["subject"] is None
+        assert payload["message_type"] == "handoff"
 
     @patch("urllib.request.urlopen")
     def test_gateway_url_trailing_slash_stripped(
         self, mock_urlopen, execute_wake, wake_params
     ):
-        """Trailing slash on gateway URL is stripped before /hooks/agent."""
+        """Trailing slash on gateway URL is stripped before /hooks/palace."""
         route = {"gateway": "http://localhost:18789/", "token": "tok"}
         execute_wake(route=route, **wake_params)
 
         req = mock_urlopen.call_args[0][0]
-        assert req.full_url == "http://localhost:18789/hooks/agent"
+        assert req.full_url == "http://localhost:18789/hooks/palace"
+
+    @patch("urllib.request.urlopen")
+    def test_route_session_key_not_in_payload(
+        self, mock_urlopen, execute_wake, wake_params
+    ):
+        """Session key from route is not included in palace webhook payload
+        (routing is handled by the JS transform on the gateway side)."""
+        route = {
+            "gateway": "http://localhost:18789",
+            "token": "tok",
+            "session": "agent:anthony:main",
+        }
+        wake_params["to_instance"] = "anthony"
+        execute_wake(route=route, **wake_params)
+
+        req = mock_urlopen.call_args[0][0]
+        payload = json.loads(req.data.decode("utf-8"))
+        # Payload is structured data, not text with relay instructions
+        assert payload["to_instance"] == "anthony"
+        assert "sessionKey" not in payload
 
     @patch("urllib.request.urlopen")
     def test_missing_token_uses_empty_bearer(

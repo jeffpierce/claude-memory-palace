@@ -34,12 +34,14 @@ def _execute_openclaw_wake(
     priority: int,
 ) -> None:
     """
-    Fire-and-forget HTTP wake to an OpenClaw gateway. Never raises.
+    Fire-and-forget HTTP notification to an OpenClaw gateway. Never raises.
 
-    Sends a POST to the gateway's /hooks/agent endpoint to deliver a
-    system event to the target agent session. Uses sessionKey for
-    targeted delivery (not broadcast). Priority >= 5 uses wakeMode "now"
-    (immediate), lower priority uses "next-heartbeat".
+    POSTs to /hooks/palace — a custom webhook endpoint with a JS
+    transform (palace.js) that routes notifications to the correct
+    Discord DM channel based on the target instance.
+
+    The transform maps to_instance → Discord channel ID and returns
+    an agent hook action with deliver=true targeting the right DM.
 
     Args:
         route: Dict with "gateway" (URL), "token" (auth secret), and
@@ -54,24 +56,22 @@ def _execute_openclaw_wake(
     try:
         gateway_url = route["gateway"].rstrip("/")
         token = route.get("token", "")
-        session_key = route.get("session")
 
-        wake_text = (
-            f"Palace message from {from_instance}: "
-            f"{subject or message_type} (msg #{message_id})"
-        )
-
+        # POST to /hooks/palace — custom webhook with JS transform
+        # that routes to the correct Discord DM based on to_instance
         payload_dict = {
-            "message": wake_text,
-            "wakeMode": "now" if priority >= 5 else "next-heartbeat",
+            "from_instance": from_instance,
+            "to_instance": to_instance,
+            "message_type": message_type,
+            "subject": subject,
+            "message_id": message_id,
+            "priority": priority,
         }
-        if session_key:
-            payload_dict["sessionKey"] = session_key
 
         payload = _json.dumps(payload_dict).encode("utf-8")
 
         req = urllib.request.Request(
-            f"{gateway_url}/hooks/agent",
+            f"{gateway_url}/hooks/palace",
             data=payload,
             headers={
                 "Content-Type": "application/json",
