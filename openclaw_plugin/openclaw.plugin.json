@@ -1,0 +1,23 @@
+{
+  "name": "memory-palace",
+  "version": "2.0.1",
+  "description": "Persistent semantic memory for AI agents — remember, recall, link, and search across conversations",
+  "entry": "dist/index.js",
+  "config": {
+    "bridgeCommand": {
+      "type": "string",
+      "default": "memory-palace-bridge",
+      "description": "Command to spawn the Python bridge subprocess. Set to full path if not in PATH."
+    },
+    "pythonPath": {
+      "type": "string",
+      "default": null,
+      "description": "Optional: explicit Python interpreter path. If set, bridge is spawned as: pythonPath -m memory_palace.bridge"
+    },
+    "instanceId": {
+      "type": "string",
+      "default": null,
+      "description": "Instance ID for this agent (e.g., 'prime', 'code'). Enables auto-subscribe to instance DM channel."
+    }
+  }
+}

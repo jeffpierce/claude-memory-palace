@@ -12,7 +12,6 @@ Valid instances are configured in ~/.memory-palace/config.json under the "instan
 """
 
 import json
-import json as _json
 import shlex
 import subprocess
 import sys
@@ -585,7 +584,7 @@ def execute_openclaw_wake(
             "priority": priority,
         }
 
-        payload = _json.dumps(payload_dict).encode("utf-8")
+        payload = json.dumps(payload_dict).encode("utf-8")
 
         req = urllib.request.Request(
             f"{gateway_url}/hooks/palace",
