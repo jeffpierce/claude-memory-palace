@@ -1,12 +1,7 @@
 """
 Message tool for Memory Palace MCP server.
 """
-import json as _json
-import shlex
-import subprocess
-import sys
-import urllib.request
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from memory_palace.services.message_service import (
     send_message,
@@ -15,6 +10,8 @@ from memory_palace.services.message_service import (
     mark_message_unread,
     subscribe,
     unsubscribe,
+    execute_openclaw_wake,
+    execute_notify_hook,
 )
 from memory_palace.config_v2 import (
     get_notify_command,
@@ -22,139 +19,6 @@ from memory_palace.config_v2 import (
     get_instance_routes,
 )
 from mcp_server.toon_wrapper import toon_response
-
-
-def _execute_openclaw_wake(
-    route: Dict[str, str],
-    from_instance: str,
-    to_instance: str,
-    message_type: str,
-    subject: Optional[str],
-    message_id: Any,
-    priority: int,
-) -> None:
-    """
-    Fire-and-forget HTTP notification to an OpenClaw gateway. Never raises.
-
-    POSTs to /hooks/palace — a custom webhook endpoint with a JS
-    transform (palace.js) that routes notifications to the correct
-    Discord DM channel based on the target instance.
-
-    The transform maps to_instance → Discord channel ID and returns
-    an agent hook action with deliver=true targeting the right DM.
-
-    Args:
-        route: Dict with "gateway" (URL), "token" (auth secret), and
-               optional "session" (agent session key) keys
-        from_instance: Sender instance ID
-        to_instance: Recipient instance ID
-        message_type: Type of message sent
-        subject: Message subject (may be None)
-        message_id: ID of the sent message
-        priority: Message priority (0-10)
-    """
-    try:
-        gateway_url = route["gateway"].rstrip("/")
-        token = route.get("token", "")
-
-        # POST to /hooks/palace — custom webhook with JS transform
-        # that routes to the correct Discord DM based on to_instance
-        payload_dict = {
-            "from_instance": from_instance,
-            "to_instance": to_instance,
-            "message_type": message_type,
-            "subject": subject,
-            "message_id": message_id,
-            "priority": priority,
-        }
-
-        payload = _json.dumps(payload_dict).encode("utf-8")
-
-        req = urllib.request.Request(
-            f"{gateway_url}/hooks/palace",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}",
-            },
-            method="POST",
-        )
-
-        urllib.request.urlopen(req, timeout=5)
-    except Exception as e:
-        print(
-            f"Warning: OpenClaw wake failed for {to_instance}: {e}",
-            file=sys.stderr,
-        )
-
-
-def _execute_notify_hook(
-    command_template: str,
-    send_result: dict,
-    from_instance: str,
-    to_instance: str,
-    message_type: str,
-    subject: Optional[str],
-    channel: Optional[str],
-    priority: int,
-) -> None:
-    """
-    Fire-and-forget post-send notification. Never raises.
-
-    Executes the configured notification command with template variable
-    substitution. All values are shell-escaped before substitution.
-
-    Args:
-        command_template: Shell command template with {variables}
-        send_result: Result dict from send_message (contains message_id)
-        from_instance: Sender instance
-        to_instance: Recipient instance
-        message_type: Type of message
-        subject: Message subject (may be None)
-        channel: Channel name (may be None)
-        priority: Message priority
-    """
-    try:
-        # Extract message_id from result
-        message_id = send_result.get("id", "")
-
-        # Build template variables dict
-        template_vars = {
-            "from_instance": str(from_instance),
-            "to_instance": str(to_instance),
-            "message_type": str(message_type),
-            "subject": str(subject) if subject is not None else "",
-            "channel": str(channel) if channel is not None else "",
-            "priority": str(priority),
-            "message_id": str(message_id),
-        }
-
-        # Shell-escape all values
-        escaped_vars = {k: shlex.quote(v) for k, v in template_vars.items()}
-
-        # Substitute into command template
-        command = command_template.format(**escaped_vars)
-
-        # Execute with timeout (fire-and-forget)
-        subprocess.run(
-            command,
-            shell=True,
-            timeout=5,
-            capture_output=True,
-            text=True,
-        )
-    except subprocess.TimeoutExpired:
-        # Log but don't fail the send
-        print(
-            f"Warning: Notification command timed out after 5s",
-            file=sys.stderr,
-        )
-    except Exception as e:
-        # Log but don't fail the send
-        print(
-            f"Warning: Notification hook failed: {e}",
-            file=sys.stderr,
-        )
 
 
 def register_message(mcp):
@@ -217,12 +81,12 @@ def register_message(mcp):
                 # 1. Try instance_routes (HTTP wake) — preferred
                 route = get_instance_route(to_instance)
                 if route:
-                    _execute_openclaw_wake(route=route, **_notify_params)
+                    execute_openclaw_wake(route=route, **_notify_params)
                 elif to_instance == "all":
                     # Broadcast: wake all routed instances except sender
                     for inst_id, inst_route in get_instance_routes().items():
                         if inst_id != from_instance:
-                            _execute_openclaw_wake(
+                            execute_openclaw_wake(
                                 route=inst_route,
                                 **{**_notify_params, "to_instance": inst_id},
                             )
@@ -230,7 +94,7 @@ def register_message(mcp):
                 # 2. Fallback to notify_command (shell exec) — backwards compat
                 notify_cmd = get_notify_command()
                 if notify_cmd is not None:
-                    _execute_notify_hook(
+                    execute_notify_hook(
                         command_template=notify_cmd,
                         send_result=result,
                         from_instance=from_instance,
