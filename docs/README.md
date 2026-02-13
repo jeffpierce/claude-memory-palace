@@ -75,7 +75,7 @@ Adjust paths for your system.
 
 ## Usage
 
-Memory Palace v2.0 provides 13 MCP tools organized into five categories:
+Memory Palace provides 13 core MCP tools organized into five categories, plus extension tools for database management:
 
 ### Core Memory Tools
 
@@ -731,6 +731,21 @@ memory_reflect(
 python tools/dump_memories_toon.py input.jsonl output.toon
 ```
 
+### Named Database Tools (Extension)
+
+Multi-database management for domain partitions (life, work, per-project). Requires the `db_manager` extension.
+
+| Tool | Description |
+|------|-------------|
+| `memory_list_databases` | List all configured databases with connection status and table counts |
+| `memory_register_database` | Register a new database at runtime (auto-derives URL if not provided) |
+| `memory_set_default_database` | Change which database is used when no `database=` param is given |
+| `memory_current_database` | Show current default database, URL, connection status |
+
+**Enable:** Add `"mcp_server.extensions.db_manager"` to the `"extensions"` list in config.
+
+See [POSTGRES.md](POSTGRES.md) for full named database setup and [mcp_server/extensions/README.md](../mcp_server/extensions/README.md) for extension details.
+
 ### Result Enhancement Features
 
 Both `memory_recall` and `memory_get` support enhanced result parameters:
@@ -887,17 +902,25 @@ Configuration is loaded from `~/.memory-palace/config.json`:
 ```json
 {
   "database": {
-    "type": "sqlite",
-    "url": null
+    "type": "postgres",
+    "url": "postgresql://localhost:5432/memory_palace"
   },
+  "databases": {
+    "default": {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace"},
+    "life":    {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace_life"}
+  },
+  "default_database": "default",
   "ollama_url": "http://localhost:11434",
   "embedding_model": null,
   "llm_model": null,
+  "extensions": ["mcp_server.extensions.db_manager"],
   "instances": ["desktop", "code", "web"],
   "notify_command": null,
   "instance_routes": {}
 }
 ```
+
+The `databases` and `default_database` keys are optional. If absent, the system uses the legacy single `database` key. See [POSTGRES.md](POSTGRES.md) for named database setup.
 
 Environment variables override config file values.
 
@@ -942,6 +965,12 @@ The existing `notify_command` (shell hook) continues to work as a fallback or al
 ### Model Configuration
 
 See [models.md](models.md) for detailed model selection guide.
+
+## OpenClaw Integration
+
+Memory Palace can also run as a **native OpenClaw plugin**, registering all 13 tools directly with the OpenClaw gateway. This eliminates MCP protocol overhead and enables real-time pubsub wake — when a message arrives, the agent wakes automatically instead of waiting for the next poll.
+
+See [OPENCLAW.md](OPENCLAW.md) for the full plugin guide including installation, bridge protocol, and pubsub wake chain.
 
 ## Troubleshooting
 
@@ -988,13 +1017,15 @@ memory-palace/
 ├── mcp_server/              # MCP server package
 │   ├── server.py            # Server entry point
 │   ├── toon_wrapper.py      # TOON response encoding
-│   └── tools/               # 13 tool implementations
+│   ├── tools/               # 13 core tool implementations
+│   └── extensions/          # Extension tools (db_manager, switch_db)
 ├── memory_palace/           # Core library
 │   ├── models_v3.py         # SQLAlchemy models (Memory, MemoryEdge, Message)
-│   ├── database.py          # Database connection (SQLite / PostgreSQL)
+│   ├── database_v3.py       # Named engine registry (SQLite / PostgreSQL)
+│   ├── bridge.py            # OpenClaw bridge subprocess (NDJSON protocol)
 │   ├── embeddings.py        # Ollama embedding client
 │   ├── llm.py               # LLM integration (synthesis, classification)
-│   ├── config_v2.py         # Configuration with auto-link settings
+│   ├── config_v2.py         # Configuration with named databases + auto-link
 │   ├── services/            # Business logic layer
 │   │   ├── memory_service.py      # remember, recall, archive, stats
 │   │   ├── graph_service.py       # link, unlink, traverse
@@ -1003,6 +1034,10 @@ memory-palace/
 │   │   ├── code_service.py        # code indexing + retrieval
 │   │   └── reflection_service.py  # transcript extraction
 │   └── migrations/          # Schema migration scripts
+├── openclaw_plugin/         # Native OpenClaw plugin (TypeScript)
+│   ├── src/index.ts         # Plugin registration + session registry + wake dispatch
+│   ├── src/bridge.ts        # PalaceBridge class (NDJSON over stdin/stdout)
+│   └── src/tools/           # 13 tool definitions mapped to bridge methods
 ├── setup/                   # Setup wizard
 ├── extensions/              # Optional extensions (Moltbook gateway, TOON converter)
 ├── docs/                    # Documentation

@@ -73,12 +73,59 @@ Then add to config:
 
 ## Built-in Extensions
 
-### switch_db
+### db_manager (Recommended)
 
-Provides runtime database switching for multi-tenancy or testing.
+Config-aware database management for named databases. Replaces `switch_db` with full multi-database support.
 
 **Tools:**
-- `memory_switch_db(database_name: str)` - Switch to a different PostgreSQL database
+
+| Tool | Description |
+|------|-------------|
+| `memory_list_databases()` | List all configured databases with connection status, URLs (masked), and table counts |
+| `memory_register_database(name, url?)` | Register a new database at runtime. Auto-derives URL from default if not provided |
+| `memory_set_default_database(name)` | Change which database is used when no `database=` param is given |
+| `memory_current_database()` | Show current default database, masked URL, connection status, and table counts |
+
+**Configuration:**
+
+```json
+{
+  "extensions": ["mcp_server.extensions.db_manager"],
+  "databases": {
+    "default": {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace"},
+    "life":    {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace_life"},
+    "work":    {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace_work"}
+  },
+  "default_database": "default"
+}
+```
+
+**Usage:**
+
+```python
+# List all databases
+result = await memory_list_databases()
+
+# Register a new database (auto-derives URL from default)
+result = await memory_register_database(name="experiments")
+
+# Switch default target
+result = await memory_set_default_database(name="work")
+
+# Check current database
+result = await memory_current_database()
+```
+
+**Important:** All runtime changes (register, set default) are **not persisted** to config. This is by design — edit `~/.memory-palace/config.json` for permanent changes.
+
+See [docs/POSTGRES.md](../../docs/POSTGRES.md) for full named database documentation.
+
+### switch_db (Legacy)
+
+Simple runtime database switching by URL manipulation. Predates named databases.
+
+**Tools:**
+- `memory_switch_db(database_name: str)` - Switch to a different PostgreSQL database by replacing the database name in the URL
 - `memory_current_db()` - Get current database name and connection info
 
 **Usage:**
@@ -91,7 +138,7 @@ result = await memory_switch_db("memory_palace2")
 result = await memory_current_db()
 ```
 
-**Important:** Database switches are **runtime only** and do not persist to config. This is by design for multi-tenancy scenarios.
+**Note:** For new setups, prefer `db_manager` which understands named database config. `switch_db` still works for simple single-database configs where you just need to swap the DB name in the URL.
 
 ## Extension Loading
 

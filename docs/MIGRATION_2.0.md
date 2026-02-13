@@ -240,6 +240,8 @@ This checks for duplicates, stale memories, orphan edges, missing embeddings, an
 
 2.0 supports both SQLite and PostgreSQL. SQLite works fine for personal use. PostgreSQL adds native vector search (pgvector), concurrent access, and partial indexes.
 
+For comprehensive PostgreSQL setup including named databases and LISTEN/NOTIFY configuration, see [POSTGRES.md](POSTGRES.md).
+
 ### Prerequisites
 
 1. Install PostgreSQL and pgvector
@@ -328,3 +330,13 @@ SQLite versions before 3.35 don't support `ALTER TABLE DROP COLUMN`. The migrati
 **Embeddings not working after migration**
 
 If you changed embedding models, existing embeddings are incompatible. Run `memory_reembed(all_memories=True, dry_run=False)` to regenerate them with the new model.
+
+## What's Next: v3.0
+
+Memory Palace continues to evolve. Key additions since 2.0:
+
+**Named Databases** — Domain partitions (life, work, per-project) with auto-derivation, runtime management tools, and auto-creation of PostgreSQL databases on first access. See [POSTGRES.md](POSTGRES.md).
+
+**OpenClaw Native Plugin** — All 13 palace tools registered directly with the OpenClaw gateway, eliminating MCP protocol overhead. Includes a persistent Python bridge subprocess, real-time pubsub wake via PostgreSQL LISTEN/NOTIFY, and automatic session discovery. See [OPENCLAW.md](OPENCLAW.md).
+
+**Database Manager Extension** — Four new tools (`memory_list_databases`, `memory_register_database`, `memory_set_default_database`, `memory_current_database`) for runtime database management. Enable via the `db_manager` extension.
