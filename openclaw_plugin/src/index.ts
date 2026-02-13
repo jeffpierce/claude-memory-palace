@@ -173,9 +173,13 @@ export function register(context: any): void {
         }
       }
       // Ring the doorbell — trigger agent heartbeat to drain the queue
+      // TODO: HERE THERE BE DRAGONS — "exec-event" bypasses the empty-heartbeat-file
+      // check in runHeartbeatOnce(). Without this lie, the heartbeat runner reads the
+      // heartbeat prompt file, finds it empty, and skips. Upstream fix: OpenClaw should
+      // expose a proper plugin wake API that doesn't route through the heartbeat system.
       if (dispatched > 0 && _requestHeartbeatNow) {
         try {
-          _requestHeartbeatNow({ reason: "palace-notification-broadcast", coalesceMs: 250 });
+          _requestHeartbeatNow({ reason: "exec-event", coalesceMs: 250 });
           logger.info(`[palace/dispatch] Heartbeat fired for broadcast (${dispatched} sessions)`);
         } catch (err: any) {
           logger.warn(`[palace/dispatch] requestHeartbeatNow EXPLODED: ${err.message} — event queued but agent won't wake`);
@@ -193,9 +197,10 @@ export function register(context: any): void {
           logger.warn(`[palace/dispatch] Failed to enqueue for instance=${targetInstance}: ${err.message}`);
         }
         // Ring the doorbell
+        // TODO: HERE THERE BE DRAGONS — same exec-event hack as broadcast path above
         if (_requestHeartbeatNow) {
           try {
-            _requestHeartbeatNow({ reason: `palace-notification-${targetInstance}`, coalesceMs: 250 });
+            _requestHeartbeatNow({ reason: "exec-event", coalesceMs: 250 });
             logger.info(`[palace/dispatch] Heartbeat fired for instance=${targetInstance}`);
           } catch (err: any) {
             logger.warn(`[palace/dispatch] requestHeartbeatNow EXPLODED: ${err.message} — event queued but agent won't wake`);
