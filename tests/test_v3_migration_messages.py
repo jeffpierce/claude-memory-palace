@@ -194,10 +194,8 @@ def mock_config():
 def reset_subscriptions():
     """Clear in-memory subscriptions between tests."""
     msg_module._subscriptions.clear()
-    msg_module._listen_connections.clear()
     yield
     msg_module._subscriptions.clear()
-    msg_module._listen_connections.clear()
 
 
 # ── Migration Tests: memories table ──────────────────────────────────────

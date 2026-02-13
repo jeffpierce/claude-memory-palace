@@ -5,7 +5,7 @@ Replaces handoff_service.py with a real pubsub message system supporting:
 - Direct messages (instance-to-instance)
 - Channel-based publish/subscribe
 - Message priorities, TTL, and read tracking
-- Postgres NOTIFY/LISTEN for real-time delivery
+- Postgres NOTIFY for real-time delivery (LISTEN handled by bridge.py)
 - SQLite polling fallback for portability
 
 Valid instances are configured in ~/.memory-palace/config.json under the "instances" key.
@@ -27,9 +27,6 @@ VALID_MESSAGE_TYPES = ["handoff", "status", "question", "fyi", "context", "event
 # In-memory subscription registry (session-scoped, not persisted)
 # Maps instance_id -> set of subscribed channels
 _subscriptions: Dict[str, Set[str]] = {}
-
-# Keep track of raw connections for LISTEN (Postgres only)
-_listen_connections: Dict[str, Any] = {}  # instance_id -> raw psycopg2 connection
 
 
 def _get_valid_instances() -> List[str]:
@@ -351,10 +348,8 @@ def subscribe(instance_id: str, channel: str) -> Dict[str, Any]:
     """
     Subscribe an instance to a channel.
 
-    For Postgres: Sets up LISTEN on the channel.
-    For SQLite: Records subscription for polling.
-
     Subscriptions are stored in-memory (dict/set) since they're session-scoped.
+    The bridge (bridge.py) handles LISTEN on its own connection.
 
     Args:
         instance_id: Which instance is subscribing (must be a configured instance)
@@ -376,32 +371,7 @@ def subscribe(instance_id: str, channel: str) -> Dict[str, Any]:
         _subscriptions[instance_id] = set()
     _subscriptions[instance_id].add(channel)
 
-    # If Postgres, set up LISTEN
-    if is_postgres():
-        try:
-            # Get or create a persistent connection for this instance
-            if instance_id not in _listen_connections:
-                engine = get_engine()
-                # Get a raw connection from the pool
-                # Note: This connection should be kept alive for the duration of the subscription
-                _listen_connections[instance_id] = engine.raw_connection()
-
-            conn = _listen_connections[instance_id]
-            cursor = conn.cursor()
-
-            # Set up LISTEN
-            channel_name = _get_channel_name(channel, None)
-            cursor.execute(f"LISTEN {channel_name}")
-            conn.commit()
-            cursor.close()
-
-            return {"message": f"Subscribed to {channel} (Postgres LISTEN active)"}
-        except Exception as e:
-            # Graceful fallback to polling
-            print(f"Warning: Postgres LISTEN failed, falling back to polling: {e}")
-            return {"message": f"Subscribed to {channel} (polling mode)"}
-
-    return {"message": f"Subscribed to {channel} (polling mode)"}
+    return {"message": f"Subscribed to {channel}"}
 
 
 def unsubscribe(instance_id: str, channel: str) -> Dict[str, Any]:
@@ -426,20 +396,6 @@ def unsubscribe(instance_id: str, channel: str) -> Dict[str, Any]:
     # Remove from in-memory registry
     if instance_id in _subscriptions:
         _subscriptions[instance_id].discard(channel)
-
-    # If Postgres, remove LISTEN
-    if is_postgres() and instance_id in _listen_connections:
-        try:
-            conn = _listen_connections[instance_id]
-            cursor = conn.cursor()
-
-            # Remove LISTEN
-            channel_name = _get_channel_name(channel, None)
-            cursor.execute(f"UNLISTEN {channel_name}")
-            conn.commit()
-            cursor.close()
-        except Exception as e:
-            print(f"Warning: Postgres UNLISTEN failed: {e}")
 
     return {"message": f"Unsubscribed from {channel}"}
 
