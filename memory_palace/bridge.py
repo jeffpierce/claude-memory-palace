@@ -230,6 +230,9 @@ def _start_listener_loop(
         # Polling loop with cross-platform compatibility
         # Windows select.select doesn't work reliably with psycopg2 connections
         while not _shutdown_event.is_set():
+            # Collect events under lock, emit AFTER releasing to avoid
+            # ABBA deadlock with _stdout_lock (write_fn acquires _stdout_lock)
+            pending_events = []
             with _listener_lock:
                 raw_conn.poll()
                 while raw_conn.notifies:
@@ -247,14 +250,18 @@ def _start_listener_loop(
                                 "priority": payload.get("priority", 0),
                             },
                         }
-                        write_fn(event)
+                        pending_events.append(event)
                     except (json.JSONDecodeError, Exception) as e:
                         print(
                             f"Warning: Failed to parse NOTIFY payload: {e}",
                             file=sys.stderr,
                         )
 
-            # Sleep 100ms between polls to avoid busy-waiting (outside lock)
+            # Emit events outside the lock — write_fn acquires _stdout_lock
+            for event in pending_events:
+                write_fn(event)
+
+            # Sleep 100ms between polls to avoid busy-waiting
             time.sleep(0.1)
 
         cursor.close()
