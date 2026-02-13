@@ -212,9 +212,9 @@ PostgreSQL's LISTEN/NOTIFY provides real-time pub/sub messaging for inter-instan
 Channels follow the pattern: `memory_palace_msg_{instance_id}`
 
 Examples:
-- `memory_palace_msg_prime`
-- `memory_palace_msg_crashtest`
-- `memory_palace_msg_sandy`
+- `memory_palace_msg_support`
+- `memory_palace_msg_engineering`
+- `memory_palace_msg_analytics`
 
 ### Payload Format
 
@@ -222,8 +222,8 @@ Messages are sent as JSON payloads:
 
 ```json
 {
-  "from_instance": "prime",
-  "to_instance": "crashtest",
+  "from_instance": "engineering",
+  "to_instance": "support",
   "message_type": "handoff",
   "subject": "Code review complete",
   "message_id": 42,

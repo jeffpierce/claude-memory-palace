@@ -99,7 +99,7 @@ Stores a new memory with intelligent auto-linking based on semantic similarity.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `instance_id` | string | Which AI instance is storing this (e.g., "desktop", "code", "web") |
+| `instance_id` | string | Which AI instance is storing this (e.g., "support", "engineering", "analytics") |
 | `memory_type` | string | Type of memory (see standard types below) |
 | `content` | string | The actual memory content |
 | `subject` | string | What/who this memory is about (optional but recommended) |
@@ -132,7 +132,7 @@ Custom types are allowed - use descriptive names that fit your needs.
 **Example:**
 ```python
 memory_remember(
-    instance_id="code",
+    instance_id="engineering",
     memory_type="architecture",
     content="The authentication system uses JWT tokens with 24-hour expiry",
     subject="authentication system",
@@ -482,8 +482,8 @@ Inter-instance messaging with pub/sub support. Replaces the old separate `handof
 # Send a handoff message
 message(
     action="send",
-    from_instance="code",
-    to_instance="desktop",
+    from_instance="engineering",
+    to_instance="support",
     content="Completed indexing 42 files. Check memories 167-209.",
     message_type="handoff",
     subject="Code indexing complete",
@@ -491,15 +491,15 @@ message(
 )
 
 # Get unread messages
-message(action="get", instance_id="desktop")
+message(action="get", instance_id="support")
 
 # Subscribe to a channel
-message(action="subscribe", instance_id="desktop", channel="code-updates")
+message(action="subscribe", instance_id="support", channel="eng-updates")
 
 # Broadcast to all instances
 message(
     action="send",
-    from_instance="desktop",
+    from_instance="support",
     to_instance="all",
     content="System maintenance in 1 hour",
     message_type="status",
@@ -508,7 +508,7 @@ message(
 )
 
 # Mark message as read
-message(action="mark_read", message_id=42, instance_id="desktop")
+message(action="mark_read", message_id=42, instance_id="support")
 ```
 
 ### Code Indexing Tools
@@ -532,7 +532,7 @@ This separation is intentional: embedding raw code produces poor semantic matche
 |-----------|------|-------------|
 | `code_path` | string | Absolute path to the source file |
 | `project` | string | Project name (e.g., "memory-palace") |
-| `instance_id` | string | Which instance is indexing (e.g., "code") |
+| `instance_id` | string | Which instance is indexing (e.g., "engineering") |
 | `force` | bool | Re-index even if already indexed (default: false) |
 
 **Example workflow:**
@@ -542,13 +542,13 @@ This separation is intentional: embedding raw code produces poor semantic matche
 code_remember_tool(
     code_path="/project/src/database.py",
     project="my-app",
-    instance_id="code"
+    instance_id="engineering"
 )
 
 code_remember_tool(
     code_path="/project/src/api/endpoints.py",
     project="my-app",
-    instance_id="code"
+    instance_id="engineering"
 )
 
 # Later, query naturally using memory_recall
@@ -661,7 +661,7 @@ Get overview statistics about the memory palace.
 {
   "total_memories": 542,
   "by_type": {"fact": 150, "preference": 42, ...},
-  "by_instance": {"code": 200, "desktop": 342},
+  "by_instance": {"engineering": 200, "support": 342},
   "by_project": {"life": 300, "my-app": 200, ...},
   "foundational_count": 15,
   "archived_count": 23,
@@ -713,14 +713,14 @@ Extract memories from a conversation transcript using LLM.
 ```python
 # Extract from JSONL transcript
 memory_reflect(
-    instance_id="desktop",
+    instance_id="support",
     transcript_path="/path/to/conversation.jsonl",
     session_id="2024-01-15-morning"
 )
 
 # Preview without storing
 memory_reflect(
-    instance_id="desktop",
+    instance_id="support",
     transcript_path="/path/to/conversation.toon",
     dry_run=True
 )
@@ -839,7 +839,7 @@ memory_recall(query="authentication", synthesize=False)
 ```python
 # Store a memory in multiple projects
 memory_remember(
-    instance_id="code",
+    instance_id="engineering",
     memory_type="architecture",
     content="All services use standard retry with exponential backoff",
     project=["my-app", "shared-patterns"],
@@ -860,21 +860,21 @@ memory_recall(query="retry patterns", project=["my-app", "shared-patterns"])
 # Desktop → Code
 message(
     action="send",
-    from_instance="desktop",
-    to_instance="code",
+    from_instance="support",
+    to_instance="engineering",
     content="Please index the authentication module files",
     message_type="handoff",
     priority=5
 )
 
 # Code checks messages
-message(action="get", instance_id="code")
+message(action="get", instance_id="engineering")
 
 # Code completes work and responds
 message(
     action="send",
-    from_instance="code",
-    to_instance="desktop",
+    from_instance="engineering",
+    to_instance="support",
     content="Indexed 12 files. See memories 200-212 for authentication patterns.",
     message_type="handoff"
 )
@@ -914,7 +914,7 @@ Configuration is loaded from `~/.memory-palace/config.json`:
   "embedding_model": null,
   "llm_model": null,
   "extensions": ["mcp_server.extensions.db_manager"],
-  "instances": ["desktop", "code", "web"],
+  "instances": ["support", "engineering", "analytics"],
   "notify_command": null,
   "instance_routes": {}
 }
@@ -931,13 +931,13 @@ The `instance_routes` config enables real-time push notifications when messages 
 ```json
 {
   "instance_routes": {
-    "prime": {
+    "support": {
       "gateway": "http://localhost:18789",
       "token": "your-gateway-token-here"
     },
-    "crashtest": {
+    "engineering": {
       "gateway": "http://localhost:18790",
-      "token": "crashtest-gateway-token-here"
+      "token": "your-other-token-here"
     }
   }
 }

@@ -213,10 +213,10 @@ Configuration loads from `~/.memory-palace/config.json` with environment variabl
   },
   "toon_output": true,
   "extensions": ["mcp_server.extensions.db_manager"],
-  "instances": ["desktop", "code", "web"],
+  "instances": ["support", "engineering", "analytics"],
   "notify_command": null,
   "instance_routes": {
-    "prime": {
+    "support": {
       "gateway": "http://localhost:18789",
       "token": "your-gateway-token-here"
     }

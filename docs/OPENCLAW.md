@@ -109,7 +109,7 @@ The plugin waits for this handshake with a default 10-second timeout before acce
 The bridge can emit events without an `id` field. These are asynchronous notifications from the database:
 
 ```json
-{"event": "new_message", "data": {"from": "prime", "to": "crashtest", "type": "handoff", "subject": "Code review done", "id": 42, "priority": 5}}
+{"event": "new_message", "data": {"from": "engineering", "to": "support", "type": "handoff", "subject": "Deployment complete", "id": 42, "priority": 5}}
 ```
 
 ### Management Methods
@@ -127,7 +127,7 @@ Gracefully stops the bridge subprocess.
 **Subscribe to channel:**
 
 ```json
-{"id": "req-3", "method": "_subscribe", "params": {"channel": "memory_palace_msg_prime"}}
+{"id": "req-3", "method": "_subscribe", "params": {"channel": "memory_palace_msg_support"}}
 ```
 
 Issues a PostgreSQL `LISTEN` on the specified channel.
@@ -135,7 +135,7 @@ Issues a PostgreSQL `LISTEN` on the specified channel.
 **Unsubscribe from channel:**
 
 ```json
-{"id": "req-4", "method": "_unsubscribe", "params": {"channel": "memory_palace_msg_prime"}}
+{"id": "req-4", "method": "_unsubscribe", "params": {"channel": "memory_palace_msg_support"}}
 ```
 
 Issues a PostgreSQL `UNLISTEN` for the specified channel.

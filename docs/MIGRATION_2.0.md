@@ -79,7 +79,7 @@ The config file at `~/.memory-palace/config.json` has structural changes:
   "ollama_url": "http://localhost:11434",
   "embedding_model": "nomic-embed-text",
   "llm_model": "llama3.2",
-  "instances": ["desktop", "code"]
+  "instances": ["support", "engineering"]
 }
 ```
 
@@ -102,7 +102,7 @@ The config file at `~/.memory-palace/config.json` has structural changes:
     "suggest_threshold": 0.675
   },
   "toon_output": true,
-  "instances": ["desktop", "code"],
+  "instances": ["support", "engineering"],
   "notify_command": null
 }
 ```
