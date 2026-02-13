@@ -1,5 +1,7 @@
 # Memory Palace
 
+[![CI](https://github.com/jeffpierce/memory-palace/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffpierce/memory-palace/actions/workflows/ci.yml)
+
 Persistent semantic memory for AI agents. Store facts, decisions, insights, and context across conversations. Search by meaning, not just keywords. Build a knowledge graph of connected memories. Share across models, instances, and providers.
 
 ## The Problem
