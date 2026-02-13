@@ -20,6 +20,7 @@ def register_archive(mcp):
         min_centrality_threshold: int = 5,
         dry_run: bool = True,
         reason: Optional[str] = None,
+        database: Optional[str] = None,
     ) -> dict[str, Any]:
         # Archive (soft delete). ID list or filters. Foundational always protected.
         """
@@ -38,4 +39,5 @@ def register_archive(mcp):
             min_centrality_threshold=min_centrality_threshold,
             dry_run=dry_run,
             reason=reason,
+            database=database,
         )

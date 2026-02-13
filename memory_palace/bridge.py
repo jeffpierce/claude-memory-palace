@@ -50,11 +50,13 @@ from memory_palace.services import (
     get_memory_stats,
     reflect,
 )
+from memory_palace.services.message_service import _get_channel_name
 
 
 # Global state
 _shutdown_event: threading.Event = threading.Event()
 _stdout_lock: threading.Lock = threading.Lock()
+_listener_lock: threading.Lock = threading.Lock()
 _listener_conn: Optional[Any] = None
 
 
@@ -228,28 +230,36 @@ def _start_listener_loop(
         # Polling loop with cross-platform compatibility
         # Windows select.select doesn't work reliably with psycopg2 connections
         while not _shutdown_event.is_set():
-            raw_conn.poll()
-            while raw_conn.notifies:
-                notify = raw_conn.notifies.pop(0)
-                try:
-                    payload = json.loads(notify.payload)
-                    event = {
-                        "event": "new_message",
-                        "data": {
-                            "from": payload.get("from_instance"),
-                            "to": payload.get("to_instance"),
-                            "type": payload.get("message_type"),
-                            "subject": payload.get("subject"),
-                            "id": payload.get("message_id"),
-                            "priority": payload.get("priority", 0),
-                        },
-                    }
-                    write_fn(event)
-                except (json.JSONDecodeError, Exception) as e:
-                    print(
-                        f"Warning: Failed to parse NOTIFY payload: {e}",
-                        file=sys.stderr,
-                    )
+            # Collect events under lock, emit AFTER releasing to avoid
+            # ABBA deadlock with _stdout_lock (write_fn acquires _stdout_lock)
+            pending_events = []
+            with _listener_lock:
+                raw_conn.poll()
+                while raw_conn.notifies:
+                    notify = raw_conn.notifies.pop(0)
+                    try:
+                        payload = json.loads(notify.payload)
+                        event = {
+                            "event": "new_message",
+                            "data": {
+                                "from": payload.get("from_instance"),
+                                "to": payload.get("to_instance"),
+                                "type": payload.get("message_type"),
+                                "subject": payload.get("subject"),
+                                "id": payload.get("message_id"),
+                                "priority": payload.get("priority", 0),
+                            },
+                        }
+                        pending_events.append(event)
+                    except (json.JSONDecodeError, Exception) as e:
+                        print(
+                            f"Warning: Failed to parse NOTIFY payload: {e}",
+                            file=sys.stderr,
+                        )
+
+            # Emit events outside the lock — write_fn acquires _stdout_lock
+            for event in pending_events:
+                write_fn(event)
 
             # Sleep 100ms between polls to avoid busy-waiting
             time.sleep(0.1)
@@ -349,10 +359,11 @@ def main() -> None:
                 channel = params.get("channel")
                 if channel and _listener_conn:
                     try:
-                        cursor = _listener_conn.cursor()
-                        cursor.execute(f"LISTEN {channel}")
-                        _listener_conn.commit()
-                        cursor.close()
+                        with _listener_lock:
+                            cursor = _listener_conn.cursor()
+                            cursor.execute(f"LISTEN {channel}")
+                            _listener_conn.commit()
+                            cursor.close()
                         _write_response(
                             {
                                 "id": req_id,
@@ -387,10 +398,11 @@ def main() -> None:
                 channel = params.get("channel")
                 if channel and _listener_conn:
                     try:
-                        cursor = _listener_conn.cursor()
-                        cursor.execute(f"UNLISTEN {channel}")
-                        _listener_conn.commit()
-                        cursor.close()
+                        with _listener_lock:
+                            cursor = _listener_conn.cursor()
+                            cursor.execute(f"UNLISTEN {channel}")
+                            _listener_conn.commit()
+                            cursor.close()
                         _write_response(
                             {
                                 "id": req_id,
@@ -434,10 +446,56 @@ def main() -> None:
                 )
                 continue
 
+            # For message method, capture action and channel before handler modifies params
+            message_action = None
+            message_channel = None
+            if method == "message":
+                message_action = params.get("action")
+                message_channel = params.get("channel")
+
             # Execute handler and write response
             try:
                 result = handler(params)
                 _write_response({"id": req_id, "result": result})
+
+                # After handler completes, sync LISTEN/UNLISTEN on bridge's _listener_conn
+                # This ensures the bridge polls the correct channels for subscribe/unsubscribe actions
+                if method == "message" and _listener_conn is not None:
+                    if message_action == "subscribe" and message_channel:
+                        try:
+                            with _listener_lock:
+                                channel_name = _get_channel_name(message_channel, None)
+                                cursor = _listener_conn.cursor()
+                                cursor.execute(f"LISTEN {channel_name}")
+                                _listener_conn.commit()
+                                cursor.close()
+                            sys.stderr.write(
+                                f"[bridge] LISTEN on {channel_name} via _listener_conn\n"
+                            )
+                            sys.stderr.flush()
+                        except Exception as e:
+                            sys.stderr.write(
+                                f"[bridge] Failed to LISTEN on {message_channel}: {e}\n"
+                            )
+                            sys.stderr.flush()
+                    elif message_action == "unsubscribe" and message_channel:
+                        try:
+                            with _listener_lock:
+                                channel_name = _get_channel_name(message_channel, None)
+                                cursor = _listener_conn.cursor()
+                                cursor.execute(f"UNLISTEN {channel_name}")
+                                _listener_conn.commit()
+                                cursor.close()
+                            sys.stderr.write(
+                                f"[bridge] UNLISTEN on {channel_name} via _listener_conn\n"
+                            )
+                            sys.stderr.flush()
+                        except Exception as e:
+                            sys.stderr.write(
+                                f"[bridge] Failed to UNLISTEN on {message_channel}: {e}\n"
+                            )
+                            sys.stderr.flush()
+
             except Exception as e:
                 sys.stderr.write(
                     f"[bridge] method={method} params_type={type(params).__name__} "

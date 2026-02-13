@@ -21,7 +21,8 @@ def register_get_memory(mcp):
         direction: Optional[str] = None,
         relation_types: Optional[List[str]] = None,
         min_strength: Optional[float] = None,
-        graph_mode: str = "summary"
+        graph_mode: str = "summary",
+        database: Optional[str] = None
     ) -> dict[str, Any]:
         # Fetch memories by ID with optional graph context.
         # Use when you have specific memory IDs (e.g., from handoff messages: "Memory 151").
@@ -57,7 +58,8 @@ def register_get_memory(mcp):
                 direction=direction,
                 relation_types=relation_types,
                 min_strength=min_strength,
-                graph_mode=graph_mode
+                graph_mode=graph_mode,
+                database=database
             )
             if result:
                 return result  # Already has {"memory": ..., "graph_context": ...} format
@@ -73,5 +75,6 @@ def register_get_memory(mcp):
             synthesize=synthesize,
             include_graph=include_graph,
             graph_depth=graph_depth,
-            graph_mode=graph_mode
+            graph_mode=graph_mode,
+            database=database
         )

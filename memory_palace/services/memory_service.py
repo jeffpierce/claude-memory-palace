@@ -362,7 +362,8 @@ def remember(
     source_context: Optional[str] = None,
     source_session_id: Optional[str] = None,
     supersedes_id: Optional[int] = None,
-    auto_link: Optional[bool] = None
+    auto_link: Optional[bool] = None,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Store a new memory in the memory palace.
@@ -396,7 +397,7 @@ def remember(
             f"Memory stored anyway, but consider adding it to ~/.memory-palace/config.json"
         )
 
-    db = get_session()
+    db = get_session(database)
     try:
         # memory_type is open-ended - use existing types when they fit, create new ones when needed
         # Types are included in semantic vector calculation
@@ -739,7 +740,8 @@ def recall(
     include_graph: bool = True,
     graph_top_n: int = 5,
     graph_depth: int = 1,
-    graph_mode: str = "summary"
+    graph_mode: str = "summary",
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Search memories using semantic search (with keyword fallback).
@@ -771,7 +773,7 @@ def recall(
           Note: Raw mode always returns verbose content regardless of detail_level parameter.
           Note: graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Get weights from config (not passable per-call anymore)
         alpha, beta, gamma = _get_retrieval_weights()
@@ -1044,7 +1046,8 @@ def archive_memory(
     centrality_protection: bool = True,
     min_centrality_threshold: int = 5,
     dry_run: bool = True,
-    reason: Optional[str] = None
+    reason: Optional[str] = None,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Archive memories (soft delete). Replaces both old forget() and batch_archive_memories().
@@ -1065,7 +1068,7 @@ def archive_memory(
     Returns:
         Dict with archived_count, skipped_count (foundational), warnings (high centrality), details
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Build query
         if memory_ids:
@@ -1230,13 +1233,13 @@ def forget(
         return {"error": f"Memory {memory_id} not found or already archived"}
 
 
-def get_memory_stats() -> Dict[str, Any]:
+def get_memory_stats(database: Optional[str] = None) -> Dict[str, Any]:
     """
     Get overview statistics of the memory system.
 
     Returns stats on total memories, by type, by instance, most accessed, etc.
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Total counts
         total = db.query(func.count(Memory.id)).scalar()
@@ -1300,7 +1303,7 @@ def get_memory_stats() -> Dict[str, Any]:
         db.close()
 
 
-def backfill_embeddings() -> Dict[str, Any]:
+def backfill_embeddings(database: Optional[str] = None) -> Dict[str, Any]:
     """
     Generate embeddings for all memories that don't have them.
 
@@ -1312,7 +1315,7 @@ def backfill_embeddings() -> Dict[str, Any]:
     Returns:
         Dictionary with counts of success/failures
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Find all memories without embeddings (including archived for completeness)
         memories_without_embeddings = db.query(Memory).filter(
@@ -1378,7 +1381,8 @@ def get_memory_by_id(
     direction: Optional[str] = None,
     relation_types: Optional[List[str]] = None,
     min_strength: Optional[float] = None,
-    graph_mode: str = "summary"
+    graph_mode: str = "summary",
+    database: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Get a single memory by ID with optional graph traversal.
@@ -1402,7 +1406,7 @@ def get_memory_by_id(
         If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
         If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
     """
-    db = get_session()
+    db = get_session(database)
     try:
         memory = db.query(Memory).filter(Memory.id == memory_id).first()
         if not memory:
@@ -1459,7 +1463,8 @@ def get_memories_by_ids(
     synthesize: bool = False,
     include_graph: bool = True,
     graph_depth: int = 1,
-    graph_mode: str = "summary"
+    graph_mode: str = "summary",
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Get multiple memories by ID, with optional LLM synthesis.
@@ -1481,7 +1486,7 @@ def get_memories_by_ids(
         If graph_mode == "full": graph_context format: {"nodes": {id: subject}, "edges": [{source, target, type, strength}]}
         If graph_mode == "summary": graph_context format: {"nodes": {id: {subject, connections, avg_strength, edge_types}}, "total_edges": int, "seed_ids": list}
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Fetch all memories in one query
         memories = db.query(Memory).filter(Memory.id.in_(memory_ids)).all()
@@ -1536,6 +1541,7 @@ def get_recent_memories(
     memory_type: Optional[str] = None,
     instance_id: Optional[str] = None,
     include_archived: bool = False,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Get the most recent memories, ordered by creation time descending.
@@ -1556,7 +1562,7 @@ def get_recent_memories(
         {"memories": list[dict], "count": int, "total_available": int}
     """
     limit = min(limit, 200)  # Cap at 200
-    db = get_session()
+    db = get_session(database)
     try:
         query = db.query(Memory)
 
@@ -1613,7 +1619,8 @@ def update_memory(
     keywords: Optional[List[str]] = None,
     foundational: Optional[bool] = None,
     memory_type: Optional[str] = None,
-    regenerate_embedding: bool = True
+    regenerate_embedding: bool = True,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Update an existing memory's content or metadata.
@@ -1630,7 +1637,7 @@ def update_memory(
     Returns:
         Dict with success status and updated memory
     """
-    db = get_session()
+    db = get_session(database)
     try:
         memory = db.query(Memory).filter(Memory.id == memory_id).first()
         if not memory:

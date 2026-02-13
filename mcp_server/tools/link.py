@@ -20,7 +20,8 @@ def register_link(mcp):
         bidirectional: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
         created_by: Optional[str] = None,
-        archive_old: bool = False
+        archive_old: bool = False,
+        database: Optional[str] = None
     ) -> dict[str, Any]:
         # Create edge between memories. Replaces memory_supersede.
         """
@@ -38,5 +39,6 @@ def register_link(mcp):
             bidirectional=bidirectional,
             metadata=metadata,
             created_by=created_by,
-            archive_old=archive_old
+            archive_old=archive_old,
+            database=database
         )

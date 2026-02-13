@@ -10,7 +10,7 @@ def register_remember(mcp):
 
     @mcp.tool()
     @toon_response
-    async def memory_remember(
+    async def memory_set(
         instance_id: str,
         memory_type: str,
         content: str,
@@ -23,7 +23,8 @@ def register_remember(mcp):
         source_context: Optional[str] = None,
         source_session_id: Optional[str] = None,
         supersedes_id: Optional[int] = None,
-        auto_link: Optional[bool] = None
+        auto_link: Optional[bool] = None,
+        database: Optional[str] = None
     ) -> dict[str, Any]:
         # Store new memory. Auto-links similar memories (>=0.75 creates edge, 0.675-0.75 suggests).
         # For explicit relationships, use supersedes_id or memory_link.
@@ -52,5 +53,6 @@ def register_remember(mcp):
             source_context=source_context,
             source_session_id=source_session_id,
             supersedes_id=supersedes_id,
-            auto_link=auto_link
+            auto_link=auto_link,
+            database=database
         )

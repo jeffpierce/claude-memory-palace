@@ -29,6 +29,9 @@ from memory_palace.config_v2 import (
     get_database_type,
     is_postgres,
     is_sqlite,
+    get_default_database_name,
+    set_default_database_name,
+    get_configured_databases,
     
     # Model config
     get_embedding_dimension,

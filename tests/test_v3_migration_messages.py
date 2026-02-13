@@ -170,16 +170,18 @@ def v3_db():
     Session = sessionmaker(bind=engine)
 
     # Monkey-patch database module
-    old_engine = db_module._engine
-    old_session = db_module._SessionLocal
-    db_module._engine = engine
-    db_module._SessionLocal = Session
+    old_engines = db_module._engines.copy()
+    old_sessions = db_module._session_factories.copy()
+    db_module._engines["default"] = engine
+    db_module._session_factories["default"] = Session
 
     yield engine, Session
 
     # Restore
-    db_module._engine = old_engine
-    db_module._SessionLocal = old_session
+    db_module._engines.clear()
+    db_module._engines.update(old_engines)
+    db_module._session_factories.clear()
+    db_module._session_factories.update(old_sessions)
 
 
 @pytest.fixture(autouse=True)
@@ -194,10 +196,8 @@ def mock_config():
 def reset_subscriptions():
     """Clear in-memory subscriptions between tests."""
     msg_module._subscriptions.clear()
-    msg_module._listen_connections.clear()
     yield
     msg_module._subscriptions.clear()
-    msg_module._listen_connections.clear()
 
 
 # ── Migration Tests: memories table ──────────────────────────────────────

@@ -15,7 +15,8 @@ def register_unlink(mcp):
     async def memory_unlink(
         source_id: int,
         target_id: int,
-        relation_type: Optional[str] = None
+        relation_type: Optional[str] = None,
+        database: Optional[str] = None
     ) -> dict[str, Any]:
         # Remove edge(s). relation_type=None removes ALL edges source→target.
         """
@@ -26,5 +27,6 @@ def register_unlink(mcp):
         return unlink_memories(
             source_id=source_id,
             target_id=target_id,
-            relation_type=relation_type
+            relation_type=relation_type,
+            database=database
         )

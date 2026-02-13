@@ -86,27 +86,28 @@ def code_remember(
     code_path: str,
     project: str,
     instance_id: str,
-    force: bool = False
+    force: bool = False,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Index a source file into the memory palace.
-    
+
     Creates two memories:
     - A prose description (memory_type: code_description) - embedded for semantic search
     - The raw code content (memory_type: code) - stored but NOT embedded
-    
+
     Connected by a source_of edge (prose -> code).
-    
+
     Args:
         code_path: Path to the source file to index
         project: Project this code belongs to (e.g., "memory-palace")
         instance_id: Which instance is indexing (must be a configured instance)
         force: Re-index even if already indexed (default False)
-    
+
     Returns:
         Dict with prose_id, code_id, subject on success, or error dict
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Normalize path for consistent cross-platform matching
         code_path = str(Path(code_path).resolve())
@@ -173,7 +174,8 @@ def code_remember(
             foundational=False,
             project=project,
             source_type="explicit",
-            source_context=f"Indexed from: {canonical_path}"
+            source_context=f"Indexed from: {canonical_path}",
+            database=database
         )
         
         if "error" in prose_result:
@@ -209,7 +211,8 @@ def code_remember(
             relation_type="source_of",
             strength=1.0,
             bidirectional=False,
-            created_by=instance_id
+            created_by=instance_id,
+            database=database
         )
         
         if "error" in link_result:
@@ -224,10 +227,10 @@ def code_remember(
         # Supersede old pair if this was a re-index (force=True with existing)
         superseded_prose_id = None
         if existing_prose:
-            supersede_memory(prose_id, existing_prose.id, archive_old=True, created_by=instance_id)
+            supersede_memory(prose_id, existing_prose.id, archive_old=True, created_by=instance_id, database=database)
             superseded_prose_id = existing_prose.id
             if existing_code_id:
-                supersede_memory(code_id, existing_code_id, archive_old=True, created_by=instance_id)
+                supersede_memory(code_id, existing_code_id, archive_old=True, created_by=instance_id, database=database)
 
         return {
             "prose_id": prose_id,
@@ -246,22 +249,23 @@ def code_recall(
     query: str,
     project: Optional[str] = None,
     synthesize: bool = True,
-    limit: int = 5
+    limit: int = 5,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Search indexed code using natural language.
-    
+
     Finds relevant code by:
     1. Semantic search on prose descriptions (memory_type: code_description)
     2. Following source_of edges to retrieve actual code
     3. Optionally synthesizing an answer using the code context
-    
+
     Args:
         query: Natural language search query (e.g., "how do embeddings work")
         project: Filter by project (optional)
         synthesize: If True, LLM answers using code context. If False, return raw matches.
         limit: Maximum number of code files to return (default 5)
-    
+
     Returns:
         If synthesize=True: {answer: str, sources: list, count: int}
         If synthesize=False: {matches: list of {prose, code} dicts, count: int}
@@ -272,7 +276,8 @@ def code_recall(
         memory_type="code_description",
         project=project,
         synthesize=False,  # We want raw memories to traverse
-        limit=limit
+        limit=limit,
+        database=database
     )
     
     if "error" in recall_result:
@@ -291,12 +296,13 @@ def code_recall(
     matches = []
     for prose in prose_memories:
         prose_id = prose["id"]
-        
+
         # Get related code memory
         related = get_related_memories(
             prose_id,
             relation_type="source_of",
-            direction="outgoing"
+            direction="outgoing",
+            database=database
         )
         
         code_memories = related.get("memories", [])

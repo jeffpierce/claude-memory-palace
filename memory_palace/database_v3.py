@@ -6,10 +6,11 @@ Supports PostgreSQL with pgvector (primary) and SQLite (legacy/migration).
 v3 changes from v2:
 - Imports from models_v3 instead of models_v2
 - Added Postgres LISTEN/NOTIFY helper functions for pubsub
+- Named engine registry: multiple databases can be managed by logical name
 """
 
 from contextlib import contextmanager
-from typing import Generator, Optional
+from typing import Any, Dict, Generator, Optional
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
@@ -20,84 +21,85 @@ from memory_palace.config_v2 import (
     get_database_type,
     is_postgres,
     is_sqlite,
-    ensure_data_dir
+    ensure_data_dir,
+    get_default_database_name,
 )
 from memory_palace.models_v3 import Base
 
-# Engine singleton
-_engine = None
-_SessionLocal = None
+# Named engine registry (replaces old singleton)
+_engines: Dict[str, Any] = {}
+_session_factories: Dict[str, Any] = {}
+_default_db: str = "default"
 
 
-def get_engine():
-    """
-    Get the SQLAlchemy engine, creating it if needed.
+def _resolve_name(db_name: Optional[str] = None) -> str:
+    """Resolve a database name to a concrete registry key."""
+    return db_name if db_name is not None else _default_db
 
-    Configures appropriately for PostgreSQL or SQLite.
-    """
-    global _engine
 
-    if _engine is not None:
-        return _engine
+def _create_engine_for_db(db_name: Optional[str] = None):
+    """Create a new SQLAlchemy engine for the given database name."""
+    name = _resolve_name(db_name)
+    db_url = get_database_url(name)
 
-    db_url = get_database_url()
-    db_type = get_database_type()
-
-    if db_type == "postgres":
-        # PostgreSQL configuration
-        _engine = create_engine(
+    if db_url.startswith("postgresql") or db_url.startswith("postgres"):
+        engine = create_engine(
             db_url,
             poolclass=QueuePool,
             pool_size=5,
             max_overflow=10,
-            pool_pre_ping=True,  # Verify connections before use
-            echo=False
+            pool_pre_ping=True,
+            echo=False,
         )
 
-        # Ensure pgvector extension exists
-        @event.listens_for(_engine, "connect")
+        @event.listens_for(engine, "connect")
         def create_pgvector_extension(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
             cursor.close()
-
     else:
-        # SQLite configuration (legacy)
         ensure_data_dir()
-
-        _engine = create_engine(
+        engine = create_engine(
             db_url,
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
-            echo=False
+            echo=False,
         )
 
-        # Enable foreign keys for SQLite
-        @event.listens_for(_engine, "connect")
+        @event.listens_for(engine, "connect")
         def set_sqlite_pragma(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
-    return _engine
+    return engine
 
 
-def get_session_factory():
-    """Get the session factory, creating it if needed."""
-    global _SessionLocal
+def get_engine(db_name: Optional[str] = None):
+    """Get the SQLAlchemy engine for db_name, creating it lazily if needed."""
+    name = _resolve_name(db_name)
+    if name not in _engines:
+        # Auto-create database if it doesn't exist yet
+        ensure_database_exists(name)
+        _engines[name] = _create_engine_for_db(name)
+    return _engines[name]
 
-    if _SessionLocal is None:
-        _SessionLocal = sessionmaker(
+
+def get_session_factory(db_name: Optional[str] = None):
+    """Get (or lazily create) the session factory for db_name."""
+    name = _resolve_name(db_name)
+    if name not in _session_factories:
+        _session_factories[name] = sessionmaker(
             autocommit=False,
             autoflush=False,
-            bind=get_engine()
+            bind=get_engine(name),
         )
-    return _SessionLocal
+    return _session_factories[name]
 
 
-def get_session() -> Session:
+def get_session(db_name: Optional[str] = None) -> Session:
     """
-    Get a new database session.
+    Get a new database session for db_name.
 
     Usage:
         session = get_session()
@@ -111,11 +113,11 @@ def get_session() -> Session:
         with session_scope() as session:
             # do work (auto-commits on success, rolls back on exception)
     """
-    return get_session_factory()()
+    return get_session_factory(db_name)()
 
 
 @contextmanager
-def session_scope() -> Generator[Session, None, None]:
+def session_scope(db_name: Optional[str] = None) -> Generator[Session, None, None]:
     """
     Provide a transactional scope around a series of operations.
 
@@ -124,7 +126,7 @@ def session_scope() -> Generator[Session, None, None]:
             session.add(memory)
             # auto-commits on exit, rolls back on exception
     """
-    session = get_session()
+    session = get_session(db_name)
     try:
         yield session
         session.commit()
@@ -135,27 +137,74 @@ def session_scope() -> Generator[Session, None, None]:
         session.close()
 
 
-def init_db():
+def ensure_database_exists(db_name: Optional[str] = None) -> bool:
+    """
+    Ensure the PostgreSQL database exists, creating it if needed.
+
+    Connects to the 'postgres' maintenance database to check/create.
+    For SQLite, this is a no-op (file is created automatically).
+
+    Args:
+        db_name: Logical database name, or None for default.
+
+    Returns:
+        True if database was created, False if it already existed.
+    """
+    name = _resolve_name(db_name)
+
+    if not is_postgres(name):
+        return False  # SQLite auto-creates
+
+    from urllib.parse import urlparse, urlunparse
+
+    db_url = get_database_url(name)
+    parsed = urlparse(db_url)
+    target_db = parsed.path.lstrip("/")
+
+    if not target_db:
+        return False
+
+    # Connect to 'postgres' maintenance database
+    maintenance_parsed = parsed._replace(path="/postgres")
+    maintenance_url = urlunparse(maintenance_parsed)
+
+    maintenance_engine = create_engine(maintenance_url, isolation_level="AUTOCOMMIT")
+
+    try:
+        with maintenance_engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :dbname"),
+                {"dbname": target_db}
+            )
+            exists = result.scalar() is not None
+
+            if not exists:
+                # CREATE DATABASE must run outside transaction (AUTOCOMMIT handles this)
+                conn.execute(text(f'CREATE DATABASE "{target_db}"'))
+                return True
+            return False
+    finally:
+        maintenance_engine.dispose()
+
+
+def init_db(db_name: Optional[str] = None):
     """
     Initialize the database by creating all tables.
 
     For PostgreSQL, also ensures the pgvector extension is installed.
     Safe to call multiple times - only creates tables that don't exist.
     """
-    engine = get_engine()
+    name = _resolve_name(db_name)
+    engine = get_engine(name)
 
-    if is_postgres():
-        # Create pgvector extension first
+    if is_postgres(name):
         with engine.connect() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.commit()
 
-    # Create all tables
     Base.metadata.create_all(bind=engine)
 
-    if is_postgres():
-        # Create HNSW index for vector similarity search
-        # This is idempotent - IF NOT EXISTS handles it
+    if is_postgres(name):
         with engine.connect() as conn:
             try:
                 conn.execute(text("""
@@ -165,55 +214,49 @@ def init_db():
                 """))
                 conn.commit()
             except Exception as e:
-                # Index might fail if no embeddings yet - that's fine
                 print(f"Note: Could not create HNSW index (will be created when embeddings exist): {e}")
 
 
-def drop_db():
+def drop_db(db_name: Optional[str] = None):
+    """Drop all tables. Use with caution! Primarily for testing."""
+    Base.metadata.drop_all(bind=get_engine(db_name))
+
+
+def reset_engine(db_name: Optional[str] = None):
     """
-    Drop all tables. Use with caution!
+    Reset engine(s) and session factories.
 
-    Primarily for testing.
+    If db_name is None, resets ALL engines.
+    If db_name is given, resets only that engine.
     """
-    Base.metadata.drop_all(bind=get_engine())
+    if db_name is None:
+        for eng in _engines.values():
+            eng.dispose()
+        _engines.clear()
+        _session_factories.clear()
+    else:
+        name = _resolve_name(db_name)
+        if name in _engines:
+            _engines[name].dispose()
+            del _engines[name]
+        _session_factories.pop(name, None)
 
 
-def reset_engine():
-    """
-    Reset the engine and session factory.
-
-    Useful for testing or when switching databases.
-    """
-    global _engine, _SessionLocal
-
-    if _engine is not None:
-        _engine.dispose()
-        _engine = None
-    _SessionLocal = None
-
-
-def check_connection() -> dict:
-    """
-    Check database connection and return status info.
-
-    Returns:
-        Dict with connection status, database type, and version info
-    """
+def check_connection(db_name: Optional[str] = None) -> dict:
+    """Check database connection and return status info."""
+    name = _resolve_name(db_name)
     try:
-        engine = get_engine()
-        db_type = get_database_type()
+        engine = get_engine(name)
+        db_type = get_database_type(name)
 
         with engine.connect() as conn:
             if db_type == "postgres":
                 result = conn.execute(text("SELECT version()"))
                 version = result.scalar()
-
-                # Check pgvector
                 result = conn.execute(text(
                     "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
                 ))
                 pgvector_version = result.scalar()
-
                 return {
                     "status": "connected",
                     "type": "postgres",
@@ -223,13 +266,11 @@ def check_connection() -> dict:
             else:
                 result = conn.execute(text("SELECT sqlite_version()"))
                 version = result.scalar()
-
                 return {
                     "status": "connected",
                     "type": "sqlite",
                     "version": version,
                 }
-
     except Exception as e:
         return {
             "status": "error",
@@ -239,69 +280,36 @@ def check_connection() -> dict:
 
 # --- PostgreSQL LISTEN/NOTIFY helpers for pubsub (v3) ---
 
-async def pg_listen(channel: str, callback=None):
+async def pg_listen(channel: str, callback=None, db_name: Optional[str] = None):
     """
     Set up LISTEN on a PostgreSQL channel for pubsub.
-
-    This requires an async context and raw connection access.
     Only works with PostgreSQL.
-
-    Args:
-        channel: Channel name to listen on
-        callback: Optional callback function to handle notifications
-
-    Raises:
-        RuntimeError: If not using PostgreSQL
-
-    Example:
-        async with pg_listen("memory_updates") as notifications:
-            async for notification in notifications:
-                print(f"Received: {notification.payload}")
     """
-    if not is_postgres():
+    name = _resolve_name(db_name)
+    if not is_postgres(name):
         raise RuntimeError("LISTEN/NOTIFY only supported on PostgreSQL")
-
-    # This is a placeholder for async implementation
-    # The actual implementation would use asyncpg or psycopg3's async support
     raise NotImplementedError(
         "Async LISTEN requires asyncpg or psycopg3. "
         "Use raw connection with threading for sync version."
     )
 
 
-def pg_notify(channel: str, payload: str = ""):
+def pg_notify(channel: str, payload: str = "", db_name: Optional[str] = None):
     """
     Send a NOTIFY on a PostgreSQL channel for pubsub.
-
     Only works with PostgreSQL. For SQLite, this is a no-op.
-
-    Args:
-        channel: Channel name to notify
-        payload: Optional payload string (max ~8000 bytes)
-
-    Example:
-        pg_notify("memory_updates", "new_memory_123")
     """
-    if not is_postgres():
-        return  # Silent no-op on SQLite
-
-    engine = get_engine()
+    name = _resolve_name(db_name)
+    if not is_postgres(name):
+        return
+    engine = get_engine(name)
     with engine.connect() as conn:
-        # Escape payload for SQL injection safety
         escaped_payload = payload.replace("'", "''")
         conn.execute(text(f"NOTIFY {channel}, '{escaped_payload}'"))
         conn.commit()
 
 
-def is_postgres_db() -> bool:
-    """
-    Expose whether we're running on PostgreSQL.
-
-    Returns:
-        True if using PostgreSQL, False if SQLite
-
-    Example:
-        if is_postgres_db():
-            pg_notify("updates", "data_changed")
-    """
-    return is_postgres()
+def is_postgres_db(db_name: Optional[str] = None) -> bool:
+    """Expose whether db_name is running on PostgreSQL."""
+    name = _resolve_name(db_name)
+    return is_postgres(name)

@@ -160,7 +160,8 @@ def reflect(
     instance_id: str,
     transcript_path: str,
     session_id: Optional[str] = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Process a conversation transcript and extract memories worth keeping.
@@ -177,7 +178,7 @@ def reflect(
     Returns:
         Dictionary with extraction stats: {extracted: N, embedded: N, types: {...}}
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Read transcript from file
         transcript_file = Path(transcript_path)
