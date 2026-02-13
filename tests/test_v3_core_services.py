@@ -82,16 +82,18 @@ def test_db():
         Session = sessionmaker(bind=engine)
 
         # Monkey-patch the database module's engine and session factory
-        old_engine = db_module._engine
-        old_session = db_module._SessionLocal
-        db_module._engine = engine
-        db_module._SessionLocal = Session
+        old_engines = db_module._engines.copy()
+        old_sessions = db_module._session_factories.copy()
+        db_module._engines["default"] = engine
+        db_module._session_factories["default"] = Session
 
         yield engine, Session
 
         # Cleanup
-        db_module._engine = old_engine
-        db_module._SessionLocal = old_session
+        db_module._engines.clear()
+        db_module._engines.update(old_engines)
+        db_module._session_factories.clear()
+        db_module._session_factories.update(old_sessions)
         Base.metadata.drop_all(bind=engine)
 
 

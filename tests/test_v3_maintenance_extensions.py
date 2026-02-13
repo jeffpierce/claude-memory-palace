@@ -44,8 +44,8 @@ FAKE_EMBEDDING_JSON = json.dumps(FAKE_EMBEDDING)  # For SQLite storage
 def test_db():
     """Set up an in-memory SQLite database for each test."""
     # Reset module-level singletons
-    old_engine = db_module._engine
-    old_session = db_module._SessionLocal
+    old_engines = db_module._engines.copy()
+    old_sessions = db_module._session_factories.copy()
 
     # Create in-memory engine
     engine = create_engine(
@@ -56,14 +56,16 @@ def test_db():
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine)
 
-    db_module._engine = engine
-    db_module._SessionLocal = Session
+    db_module._engines["default"] = engine
+    db_module._session_factories["default"] = Session
 
     yield engine, Session
 
     # Teardown
-    db_module._engine = old_engine
-    db_module._SessionLocal = old_session
+    db_module._engines.clear()
+    db_module._engines.update(old_engines)
+    db_module._session_factories.clear()
+    db_module._session_factories.update(old_sessions)
     Base.metadata.drop_all(bind=engine)
 
 
