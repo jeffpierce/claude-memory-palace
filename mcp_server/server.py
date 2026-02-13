@@ -83,14 +83,8 @@ def _check_schema_version():
 
 async def main_async():
     """Run the MCP server (async)."""
-    # Initialize all configured databases
-    from memory_palace.config_v2 import get_configured_databases
-    databases = get_configured_databases()
-    for db_name in databases:
-        ensure_database_exists(db_name)
-        init_db(db_name)
-
-    # Check schema version before accepting connections
+    # Check schema version on default database before accepting connections
+    # Named databases are initialized lazily on first access via get_engine()
     _check_schema_version()
 
     # Run server with stdio transport (FastMCP has run_stdio_async)

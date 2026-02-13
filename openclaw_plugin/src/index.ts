@@ -40,17 +40,20 @@ let bridge: PalaceBridge | null = null;
  */
 export function register(context: any): void {
   const logger = context.logger;
-  const runtime = context.runtime;
 
-  // Import heartbeat wake — enqueueSystemEvent only queues text,
-  // requestHeartbeatNow actually triggers the agent turn (~250ms coalesce)
-  let requestHeartbeatNow: ((opts?: { reason?: string }) => void) | null = null;
+  // Import OpenClaw plugin SDK for agent wake mechanism.
+  // enqueueSystemEvent queues text for the agent session,
+  // requestHeartbeatNow triggers the actual agent turn (~250ms coalesce).
+  // Both are standalone exports — NOT on context.runtime.
+  let _enqueueSystemEvent: ((text: string, options: { sessionKey: string }) => void) | null = null;
+  let _requestHeartbeatNow: ((opts?: { reason?: string; coalesceMs?: number }) => void) | null = null;
   try {
-    const heartbeatMod = require("openclaw/dist/plugin-sdk/infra/heartbeat-wake.js");
-    requestHeartbeatNow = heartbeatMod.requestHeartbeatNow;
-    logger.info(`[palace] requestHeartbeatNow loaded successfully`);
+    const sdk = require("openclaw/plugin-sdk");
+    _enqueueSystemEvent = sdk.enqueueSystemEvent;
+    _requestHeartbeatNow = sdk.requestHeartbeatNow;
+    logger.info(`[palace] Plugin SDK loaded — enqueueSystemEvent + requestHeartbeatNow available`);
   } catch (err: any) {
-    logger.warn(`[palace] Could not load requestHeartbeatNow: ${err.message} — agents won't be woken immediately`);
+    logger.warn(`[palace] Could not load openclaw/plugin-sdk: ${err.message} — notification dispatch disabled`);
   }
 
   // Plugin-specific config is in pluginConfig, NOT config (which is the full OpenClaw config)
@@ -101,6 +104,11 @@ export function register(context: any): void {
   bridge.on("new_message", (data: any) => {
     logger.info(`[palace/notify] ${data.type} from=${data.from} to=${data.to} — ${data.subject || "(no subject)"}`);
 
+    if (!_enqueueSystemEvent) {
+      logger.warn(`[palace/notify] Plugin SDK not loaded — cannot dispatch. Install openclaw/plugin-sdk.`);
+      return;
+    }
+
     const targetInstance = data.to;
 
     if (!targetInstance) {
@@ -116,15 +124,15 @@ export function register(context: any): void {
       let dispatched = 0;
       for (const [instId, session] of sessionRegistry) {
         try {
-          runtime.system.enqueueSystemEvent(eventText, { sessionKey: session.sessionKey });
+          _enqueueSystemEvent!(eventText, { sessionKey: session.sessionKey });
           dispatched++;
           logger.info(`[palace/dispatch] Broadcast to instance=${instId} session=${session.sessionKey}`);
         } catch (err: any) {
           logger.warn(`[palace/dispatch] Failed to wake instance=${instId}: ${err.message}`);
         }
       }
-      if (dispatched > 0 && requestHeartbeatNow) {
-        requestHeartbeatNow({ reason: "palace-notification-broadcast" });
+      if (dispatched > 0 && _requestHeartbeatNow) {
+        _requestHeartbeatNow({ reason: "palace-notification-broadcast" });
         logger.info(`[palace/dispatch] Heartbeat requested for broadcast (${dispatched} sessions)`);
       }
       logger.info(`[palace/dispatch] Broadcast complete: ${dispatched}/${sessionRegistry.size} sessions`);
@@ -133,11 +141,11 @@ export function register(context: any): void {
       const session = sessionRegistry.get(targetInstance);
       if (session) {
         try {
-          runtime.system.enqueueSystemEvent(eventText, { sessionKey: session.sessionKey });
-          if (requestHeartbeatNow) {
-            requestHeartbeatNow({ reason: `palace-notification-${targetInstance}` });
+          _enqueueSystemEvent!(eventText, { sessionKey: session.sessionKey });
+          if (_requestHeartbeatNow) {
+            _requestHeartbeatNow({ reason: `palace-notification-${targetInstance}` });
           }
-          logger.info(`[palace/dispatch] Woke instance=${targetInstance} session=${session.sessionKey} (heartbeat=${!!requestHeartbeatNow})`);
+          logger.info(`[palace/dispatch] Woke instance=${targetInstance} session=${session.sessionKey} (heartbeat=${!!_requestHeartbeatNow})`);
         } catch (err: any) {
           logger.warn(`[palace/dispatch] Failed to wake instance=${targetInstance}: ${err.message}`);
         }
