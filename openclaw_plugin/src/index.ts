@@ -4,6 +4,12 @@
  * Registers palace operations as first-class agent tools,
  * calling into the Python service layer via a persistent bridge subprocess.
  * Eliminates MCP protocol overhead for OpenClaw users.
+ *
+ * NOTE: Requires live-patch to extensionAPI.js — see PATCH_NOTES.md.
+ * Without the patch, runtime.system.enqueueSystemEvent and requestHeartbeatNow
+ * use extensionAPI's module-scoped closures (isolated from the loader's copies),
+ * meaning events go into a void queue and heartbeat has a null handler.
+ * The patch rewires createPluginRuntime() to import from the loader chunk.
  */
 
 import { PalaceBridge, BridgeConfig } from "./bridge";
@@ -41,19 +47,33 @@ let bridge: PalaceBridge | null = null;
 export function register(context: any): void {
   const logger = context.logger;
 
-  // Import OpenClaw plugin SDK for agent wake mechanism.
-  // enqueueSystemEvent queues text for the agent session,
-  // requestHeartbeatNow triggers the actual agent turn (~250ms coalesce).
-  // Both are standalone exports — NOT on context.runtime.
+  // Access system event functions from the plugin runtime.
+  // With the extensionAPI.js patch applied, these are the LOADER's versions —
+  // they share closures with the heartbeat handler and the real event queue.
+  // Without the patch, these are dead (isolated closures, null handler).
+  const runtime = context.runtime;
   let _enqueueSystemEvent: ((text: string, options: { sessionKey: string }) => void) | null = null;
   let _requestHeartbeatNow: ((opts?: { reason?: string; coalesceMs?: number }) => void) | null = null;
-  try {
-    const sdk = require("openclaw/plugin-sdk");
-    _enqueueSystemEvent = sdk.enqueueSystemEvent;
-    _requestHeartbeatNow = sdk.requestHeartbeatNow;
-    logger.info(`[palace] Plugin SDK loaded — enqueueSystemEvent + requestHeartbeatNow available`);
-  } catch (err: any) {
-    logger.warn(`[palace] Could not load openclaw/plugin-sdk: ${err.message} — notification dispatch disabled`);
+
+  if (runtime) {
+    logger.info(`[palace] runtime keys: ${Object.keys(runtime).join(", ")}`);
+    if (runtime.system) {
+      logger.info(`[palace] runtime.system keys: ${Object.keys(runtime.system).join(", ")}`);
+    }
+  }
+
+  if (runtime?.system?.enqueueSystemEvent) {
+    _enqueueSystemEvent = runtime.system.enqueueSystemEvent;
+    logger.info(`[palace] enqueueSystemEvent — ready`);
+  } else {
+    logger.warn(`[palace] context.runtime.system.enqueueSystemEvent not available — notification dispatch disabled`);
+  }
+
+  if (runtime?.system?.requestHeartbeatNow) {
+    _requestHeartbeatNow = runtime.system.requestHeartbeatNow;
+    logger.info(`[palace] requestHeartbeatNow — ready`);
+  } else {
+    logger.warn(`[palace] requestHeartbeatNow not on runtime.system`);
   }
 
   // Plugin-specific config is in pluginConfig, NOT config (which is the full OpenClaw config)
@@ -78,13 +98,22 @@ export function register(context: any): void {
 
   // Auto-discover agent sessions from tool usage
   // When any agent calls a palace tool, we capture their sessionKey + instance_id
-  context.on("before_tool_call", (event: { toolName: string; params: Record<string, any> }, ctx: { agentId?: string; sessionKey?: string }) => {
+  context.on("before_tool_call", (event: { toolName: string; params: Record<string, any> }, ctx: { agentId?: string; sessionKey?: string; sessionId?: string }) => {
     // Only care about palace tools
     if (!palaceToolNames.has(event.toolName)) return;
 
-    // Extract instance_id from tool params (most palace tools have it)
-    const instanceId = event.params?.instance_id;
-    const sessionKey = ctx?.sessionKey;
+    // Extract instance_id from tool params — most tools use instance_id,
+    // but message tool uses from_instance. Also fall back to bridge config.
+    const instanceId = event.params?.instance_id
+      || event.params?.from_instance
+      || pluginCfg.instanceId;
+    // Try sessionKey first, fall back to sessionId — OpenClaw may provide either
+    const sessionKey = ctx?.sessionKey || ctx?.sessionId;
+
+    // Log what we're seeing for debugging session discovery
+    if (event.params?.instance_id || event.params?.from_instance) {
+      logger.info(`[palace/session] Hook fired: tool=${event.toolName} instanceId=${instanceId} sessionKey=${sessionKey} agentId=${ctx.agentId} ctx_keys=${Object.keys(ctx || {}).join(",")}`);
+    }
 
     if (instanceId && sessionKey) {
       const existing = sessionRegistry.get(instanceId);
@@ -96,16 +125,28 @@ export function register(context: any): void {
       });
       if (isNew) {
         logger.info(`[palace/session] Auto-registered: instance=${instanceId} session=${sessionKey} agent=${ctx.agentId || "unknown"}`);
+
+        // Auto-subscribe bridge to this instance's Postgres LISTEN channel
+        // so real-time dispatch works for all agents, not just the bootstrap instanceId.
+        // LISTEN is idempotent in Postgres — safe to call even if already subscribed.
+        if (bridge?.isReady) {
+          const pgChannel = `memory_palace_msg_${instanceId}`;
+          bridge.subscribe(pgChannel).then(() => {
+            logger.info(`[palace/session] Auto-subscribed bridge to ${pgChannel}`);
+          }).catch((err: any) => {
+            logger.warn(`[palace/session] Failed to auto-subscribe to ${pgChannel}: ${err.message}`);
+          });
+        }
       }
     }
   });
 
   // Listen for real-time message events and dispatch via enqueueSystemEvent
-  bridge.on("new_message", (data: any) => {
+  bridge.on("new_message", async (data: any) => {
     logger.info(`[palace/notify] ${data.type} from=${data.from} to=${data.to} — ${data.subject || "(no subject)"}`);
 
     if (!_enqueueSystemEvent) {
-      logger.warn(`[palace/notify] Plugin SDK not loaded — cannot dispatch. Install openclaw/plugin-sdk.`);
+      logger.warn(`[palace/notify] Runtime system API not available — cannot dispatch`);
       return;
     }
 
@@ -126,28 +167,39 @@ export function register(context: any): void {
         try {
           _enqueueSystemEvent!(eventText, { sessionKey: session.sessionKey });
           dispatched++;
-          logger.info(`[palace/dispatch] Broadcast to instance=${instId} session=${session.sessionKey}`);
+          logger.info(`[palace/dispatch] Enqueued for instance=${instId} session=${session.sessionKey}`);
         } catch (err: any) {
-          logger.warn(`[palace/dispatch] Failed to wake instance=${instId}: ${err.message}`);
+          logger.warn(`[palace/dispatch] Failed to enqueue for instance=${instId}: ${err.message}`);
         }
       }
+      // Ring the doorbell — trigger agent heartbeat to drain the queue
       if (dispatched > 0 && _requestHeartbeatNow) {
-        _requestHeartbeatNow({ reason: "palace-notification-broadcast" });
-        logger.info(`[palace/dispatch] Heartbeat requested for broadcast (${dispatched} sessions)`);
+        try {
+          _requestHeartbeatNow({ reason: "palace-notification-broadcast", coalesceMs: 250 });
+          logger.info(`[palace/dispatch] Heartbeat fired for broadcast (${dispatched} sessions)`);
+        } catch (err: any) {
+          logger.warn(`[palace/dispatch] requestHeartbeatNow EXPLODED: ${err.message} — event queued but agent won't wake`);
+        }
       }
-      logger.info(`[palace/dispatch] Broadcast complete: ${dispatched}/${sessionRegistry.size} sessions`);
+      logger.info(`[palace/dispatch] Broadcast complete: ${dispatched}/${sessionRegistry.size} sessions, heartbeat=${!!_requestHeartbeatNow}`);
     } else {
       // Targeted dispatch
       const session = sessionRegistry.get(targetInstance);
       if (session) {
         try {
           _enqueueSystemEvent!(eventText, { sessionKey: session.sessionKey });
-          if (_requestHeartbeatNow) {
-            _requestHeartbeatNow({ reason: `palace-notification-${targetInstance}` });
-          }
-          logger.info(`[palace/dispatch] Woke instance=${targetInstance} session=${session.sessionKey} (heartbeat=${!!_requestHeartbeatNow})`);
+          logger.info(`[palace/dispatch] Enqueued for instance=${targetInstance} session=${session.sessionKey}`);
         } catch (err: any) {
-          logger.warn(`[palace/dispatch] Failed to wake instance=${targetInstance}: ${err.message}`);
+          logger.warn(`[palace/dispatch] Failed to enqueue for instance=${targetInstance}: ${err.message}`);
+        }
+        // Ring the doorbell
+        if (_requestHeartbeatNow) {
+          try {
+            _requestHeartbeatNow({ reason: `palace-notification-${targetInstance}`, coalesceMs: 250 });
+            logger.info(`[palace/dispatch] Heartbeat fired for instance=${targetInstance}`);
+          } catch (err: any) {
+            logger.warn(`[palace/dispatch] requestHeartbeatNow EXPLODED: ${err.message} — event queued but agent won't wake`);
+          }
         }
       } else {
         logger.warn(`[palace/dispatch] Instance "${targetInstance}" not in session registry (${sessionRegistry.size} known). Message stays in palace for polling.`);
