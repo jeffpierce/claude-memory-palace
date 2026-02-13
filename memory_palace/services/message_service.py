@@ -76,7 +76,7 @@ def _pg_notify(channel_name: str, payload: Dict[str, Any], database: Optional[st
             payload_json = json.dumps(payload)
             # Escape single quotes in payload
             payload_json = payload_json.replace("'", "''")
-            conn.execute(text(f"NOTIFY {channel_name}, '{payload_json}'"))
+            conn.execute(text(f'NOTIFY "{channel_name}", \'{payload_json}\''))
             conn.commit()
     except Exception as e:
         # Graceful fallback: if NOTIFY fails, messages are still in DB

@@ -253,8 +253,32 @@ export function register(context: any): void {
   }
 
   // Kick off bridge connection in background — non-blocking
-  bridge.start().then(() => {
+  bridge.start().then(async () => {
     logger.info(`Palace bridge connected (v${bridge!.version}, ${bridge!.tools} tools)`);
+
+    // Pre-seed sessionRegistry from palace config's instance_routes.
+    // This eliminates the chicken-and-egg where agents need to make a tool
+    // call before pubsub dispatch works. Bridge restart = fully self-healing.
+    try {
+      const routes = await bridge!.call("_get_instance_routes", {}, 5_000);
+      if (routes?.instance_routes) {
+        let seeded = 0;
+        for (const [instanceId, route] of Object.entries(routes.instance_routes) as [string, any][]) {
+          const sessionKey = route.session;
+          if (sessionKey && !sessionRegistry.has(instanceId)) {
+            sessionRegistry.set(instanceId, {
+              sessionKey,
+              agentId: undefined,
+              lastSeen: Date.now(),
+            });
+            seeded++;
+          }
+        }
+        logger.info(`[palace/session] Pre-seeded ${seeded} sessions from instance_routes (${sessionRegistry.size} total)`);
+      }
+    } catch (err: any) {
+      logger.warn(`[palace/session] Failed to pre-seed from instance_routes: ${err.message} — agents will self-register on first tool call`);
+    }
   }).catch((err: any) => {
     logger.warn(`Bridge pre-connect failed: ${err.message} — will retry on first tool call`);
   });
