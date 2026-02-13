@@ -24,7 +24,8 @@ def register_recall(mcp):
         include_graph: bool = True,
         graph_top_n: int = 5,
         graph_depth: int = 1,
-        graph_mode: str = "summary"
+        graph_mode: str = "summary",
+        database: Optional[str] = None
     ) -> dict[str, Any]:
         # Semantic search (keyword fallback). Centrality-weighted ranking.
         """
@@ -51,5 +52,6 @@ def register_recall(mcp):
             include_graph=include_graph,
             graph_top_n=graph_top_n,
             graph_depth=graph_depth,
-            graph_mode=graph_mode
+            graph_mode=graph_mode,
+            database=database
         )

@@ -15,6 +15,7 @@ def register_audit(mcp):
         thresholds: Optional[Dict[str, Any]] = None,
         project: Optional[str] = None,
         limit_per_category: int = 20,
+        database: Optional[str] = None,
     ) -> dict[str, Any]:
         # Check palace health. Foundational never stale.
         """
@@ -28,4 +29,5 @@ def register_audit(mcp):
             thresholds=thresholds,
             project=project,
             limit_per_category=limit_per_category,
+            database=database,
         )

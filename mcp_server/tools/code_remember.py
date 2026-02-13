@@ -1,5 +1,5 @@
 """Code remember tool for Memory Palace MCP server."""
-from typing import Any
+from typing import Any, Optional
 
 from memory_palace.services.code_service import code_remember
 from mcp_server.toon_wrapper import toon_response
@@ -15,6 +15,7 @@ def register_code_remember(mcp):
         project: str,
         instance_id: str,
         force: bool = False,
+        database: Optional[str] = None,
     ) -> dict[str, Any]:
         # Index source file for NL search. Creates prose (embedded) + raw code (stored).
         """
@@ -27,4 +28,5 @@ def register_code_remember(mcp):
             project=project,
             instance_id=instance_id,
             force=force,
+            database=database,
         )

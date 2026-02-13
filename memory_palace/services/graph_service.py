@@ -23,7 +23,8 @@ def link_memories(
     bidirectional: bool = False,
     metadata: Optional[Dict[str, Any]] = None,
     created_by: Optional[str] = None,
-    archive_old: bool = False
+    archive_old: bool = False,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Create a relationship edge between two memories.
@@ -42,7 +43,7 @@ def link_memories(
     Returns:
         Dict with edge ID and confirmation, or error
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Validate memories exist
         source = db.query(Memory).filter(Memory.id == source_id).first()
@@ -126,7 +127,8 @@ def link_memories(
 def unlink_memories(
     source_id: int,
     target_id: int,
-    relation_type: Optional[str] = None
+    relation_type: Optional[str] = None,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Remove relationship edge(s) between two memories.
@@ -139,7 +141,7 @@ def unlink_memories(
     Returns:
         Dict with count of removed edges
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Build query for edges to delete
         query = db.query(MemoryEdge).filter(
@@ -174,7 +176,8 @@ def get_related_memories(
     relation_type: Optional[str] = None,
     direction: str = "both",
     include_memory_content: bool = True,
-    detail_level: str = "summary"
+    detail_level: str = "summary",
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Get memories related to a given memory via edges.
@@ -189,7 +192,7 @@ def get_related_memories(
     Returns:
         Dict with outgoing and/or incoming edges and related memories
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Verify memory exists
         memory = db.query(Memory).filter(Memory.id == memory_id).first()
@@ -267,7 +270,8 @@ def supersede_memory(
     new_memory_id: int,
     old_memory_id: int,
     archive_old: bool = True,
-    created_by: Optional[str] = None
+    created_by: Optional[str] = None,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Mark a new memory as superseding an old one.
@@ -297,7 +301,8 @@ def supersede_memory(
         bidirectional=False,
         metadata={"superseded_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat()},
         created_by=created_by,
-        archive_old=archive_old
+        archive_old=archive_old,
+        database=database
     )
 
 
@@ -308,7 +313,8 @@ def traverse_graph(
     direction: str = "outgoing",
     min_strength: float = 0.0,
     include_archived: bool = False,
-    detail_level: str = "summary"
+    detail_level: str = "summary",
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Traverse the memory graph from a starting point.
@@ -327,7 +333,7 @@ def traverse_graph(
     Returns:
         Dict with nodes (memories) and edges discovered during traversal
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Clamp max_depth
         max_depth = max(1, min(5, max_depth))
@@ -436,14 +442,14 @@ def traverse_graph(
         db.close()
 
 
-def get_relationship_types() -> Dict[str, Any]:
+def get_relationship_types(database: Optional[str] = None) -> Dict[str, Any]:
     """
     Get information about available relationship types.
 
     Returns:
         Dict with standard types and their descriptions, plus custom types in use
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Standard types with descriptions
         standard_types = {

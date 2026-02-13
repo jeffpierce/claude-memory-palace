@@ -18,6 +18,7 @@ def register_reembed(mcp):
         missing_only: bool = False,
         batch_size: int = 50,
         dry_run: bool = True,
+        database: Optional[str] = None,
     ) -> dict[str, Any]:
         # Regenerate embeddings. missing_only=True for backfill (replaces memory_backfill_embeddings).
         """
@@ -34,4 +35,5 @@ def register_reembed(mcp):
             missing_only=missing_only,
             batch_size=batch_size,
             dry_run=dry_run,
+            database=database,
         )

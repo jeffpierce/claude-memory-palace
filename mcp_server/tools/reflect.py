@@ -15,6 +15,7 @@ def register_reflect(mcp):
         transcript_path: str,
         session_id: Optional[str] = None,
         dry_run: bool = False,
+        database: Optional[str] = None,
     ) -> dict[str, Any]:
         # Extract memories from transcript using LLM.
         """
@@ -27,4 +28,5 @@ def register_reflect(mcp):
             transcript_path=transcript_path,
             session_id=session_id,
             dry_run=dry_run,
+            database=database,
         )

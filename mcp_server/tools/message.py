@@ -36,6 +36,7 @@ def register_message(mcp):
         limit: int = 50,
         # Mark params
         message_id: Optional[int] = None,
+        database: Optional[str] = None,
     ) -> dict[str, Any]:
         # Inter-instance messaging with pubsub. Replaces handoff_send/get/mark_read.
         # Postgres: real-time NOTIFY. SQLite: polling.
@@ -58,6 +59,7 @@ def register_message(mcp):
                 subject=subject,
                 channel=channel,
                 priority=priority,
+                database=database,
             )
 
             return result
@@ -70,15 +72,16 @@ def register_message(mcp):
                 channel=channel,
                 message_type=message_type if message_type != "message" else None,
                 limit=limit,
+                database=database,
             )
         elif action == "mark_read":
             if message_id is None or not instance_id:
                 return {"error": "mark_read requires message_id and instance_id"}
-            return mark_message_read(message_id=message_id, instance_id=instance_id)
+            return mark_message_read(message_id=message_id, instance_id=instance_id, database=database)
         elif action == "mark_unread":
             if message_id is None:
                 return {"error": "mark_unread requires message_id"}
-            return mark_message_unread(message_id=message_id)
+            return mark_message_unread(message_id=message_id, database=database)
         elif action == "subscribe":
             if not instance_id or not channel:
                 return {"error": "subscribe requires instance_id and channel"}

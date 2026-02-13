@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 
 # Default data directory: ~/.memory-palace/
@@ -18,13 +18,28 @@ CONFIG_FILE_NAME = "config.json"
 
 # Default configuration values
 DEFAULT_CONFIG: Dict[str, Any] = {
-    # Database configuration
+    # Database configuration (single database — legacy, still supported)
     "database": {
         "type": "sqlite",  # "sqlite" (default, zero-install) or "postgres" (upgrade path)
         "url": None,  # PostgreSQL connection URL, or None to use default SQLite path
         # Default: postgresql://localhost:5432/memory_palace (if type=postgres and url=None)
         # Default: sqlite:///~/.memory-palace/memories.db (if type=sqlite and url=None)
     },
+    # Named databases (v2.1+ — domain partitions)
+    # If present, each key is a logical name mapping to a database config.
+    # "default_database" selects which name is used when no database= param is given.
+    # If "databases" key is absent, falls back to the single "database" key above.
+    #
+    # Example:
+    #   "databases": {
+    #       "default": {"type": "postgres", "url": "postgresql://..."},
+    #       "life":    {"type": "postgres", "url": "postgresql://..."},
+    #       "work":    {"type": "postgres", "url": "postgresql://..."}
+    #   },
+    #   "default_database": "default"
+    #
+    # "databases": {},
+    # "default_database": "default",
     # Ollama configuration
     "ollama_url": "http://localhost:11434",
     "embedding_model": None,  # Auto-detected from Ollama
@@ -192,22 +207,121 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> None:
             base[k] = v
 
 
-def get_database_url() -> str:
+def _derive_database_url(base_url: str, new_db_name: str) -> Optional[str]:
     """
-    Get the database URL for SQLAlchemy.
+    Derive a new database URL by replacing the database name in the path.
+
+    Takes the base URL (e.g., postgresql://user:pass@host/memory_palace)
+    and replaces the database name with new_db_name, prefixed with
+    memory_palace_ if not already prefixed.
+
+    Args:
+        base_url: The source database URL to derive from
+        new_db_name: The logical database name (e.g., "life", "work")
+
+    Returns:
+        New URL string, or None if URL can't be parsed
+    """
+    if not base_url:
+        return None
+
+    parsed = urlparse(base_url)
+    if not parsed.scheme.startswith("postgres"):
+        # For SQLite, derive a new file path
+        # e.g., sqlite:///path/memories.db -> sqlite:///path/memories_life.db
+        if parsed.scheme == "sqlite":
+            path = base_url.replace("sqlite:///", "")
+            base_path = path.rsplit(".", 1)
+            if len(base_path) == 2:
+                new_path = f"{base_path[0]}_{new_db_name}.{base_path[1]}"
+            else:
+                new_path = f"{path}_{new_db_name}"
+            return f"sqlite:///{new_path}"
+        return None
+
+    # For PostgreSQL: replace the database name in the path
+    # Convention: prefix with memory_palace_ for clean namespacing
+    if new_db_name.startswith("memory_palace"):
+        pg_db_name = new_db_name
+    else:
+        pg_db_name = f"memory_palace_{new_db_name}"
+
+    new_parsed = parsed._replace(path=f"/{pg_db_name}")
+    return urlunparse(new_parsed)
+
+
+def get_database_url(db_name: Optional[str] = None) -> str:
+    """
+    Get the database URL for SQLAlchemy by logical name.
+
+    Resolution order:
+    1. If db_name is given and config has "databases" dict with that key → use it
+    2. If db_name is None, resolve the default database name first, then step 1
+    3. If no "databases" dict in config, fall back to legacy "database" key
+    4. If nothing configured, use built-in defaults (postgres or sqlite)
+
+    Args:
+        db_name: Logical database name (e.g., "default", "life", "work").
+                 None means use the configured default.
 
     Returns:
         Database URL string
+
+    Raises:
+        KeyError: If db_name is given but not found in configured databases
     """
     config = load_config()
-    db_config = config.get("database", {})
-    db_type = db_config.get("type", "postgres")
-    db_url = db_config.get("url")
+    databases = config.get("databases")
 
-    if db_url:
-        return db_url
+    if databases:
+        # Named databases mode (v2.1+)
+        name = db_name or get_default_database_name()
+        if name not in databases:
+            # Auto-derive: use default database URL with different db name
+            default_name = get_default_database_name()
+            if default_name in databases:
+                default_url = databases[default_name].get("url", "")
+                derived_url = _derive_database_url(default_url, name)
+                if derived_url:
+                    # Register it in-memory for future lookups
+                    databases[name] = {"type": databases[default_name].get("type", "postgres"), "url": derived_url}
+                    return derived_url
+            available = list(databases.keys())
+            raise KeyError(
+                f"Database '{name}' not found and could not auto-derive URL. "
+                f"Available databases: {available}"
+            )
+        db_config = databases[name]
+        db_url = db_config.get("url")
+        if db_url:
+            return db_url
+        # Fall through to defaults using type from named config
+        db_type = db_config.get("type", "postgres")
+    else:
+        # Legacy single-database mode (backward compat)
+        if db_name is not None and db_name != "default":
+            # Auto-derive from legacy single database URL
+            db_config = config.get("database", {})
+            db_url = db_config.get("url")
+            if db_url:
+                derived_url = _derive_database_url(db_url, db_name)
+                if derived_url:
+                    # Bootstrap the databases dict for future lookups
+                    if "databases" not in config:
+                        config["databases"] = {}
+                    config["databases"][db_name] = {"type": db_config.get("type", "postgres"), "url": derived_url}
+                    return derived_url
+            raise KeyError(
+                f"Database '{db_name}' requested but could not auto-derive URL. "
+                f"Configure a 'databases' section in ~/.memory-palace/config.json."
+            )
+        db_config = config.get("database", {})
+        db_type = db_config.get("type", "postgres")
+        db_url = db_config.get("url")
+        if db_url:
+            return db_url
 
-    # Default URLs
+    # Default URLs (no explicit URL configured)
     if db_type == "postgres":
         return "postgresql://localhost:5432/memory_palace"
     else:
@@ -216,26 +330,78 @@ def get_database_url() -> str:
         return f"sqlite:///{data_dir}/memories.db"
 
 
-def get_database_type() -> str:
+def get_default_database_name() -> str:
     """
-    Get the database type ("postgres" or "sqlite").
+    Get the configured default database name.
+
+    Returns:
+        The default database name string. Falls back to "default".
+    """
+    config = load_config()
+    return config.get("default_database", "default")
+
+
+def set_default_database_name(name: str) -> None:
+    """
+    Set the default database name at runtime (in-memory only, not persisted).
+
+    Args:
+        name: Logical database name to use as default
+    """
+    global _config_cache
+    config = load_config()
+    config["default_database"] = name
+    _config_cache = config
+
+
+def get_configured_databases() -> Dict[str, Any]:
+    """
+    Get all configured database entries.
+
+    Returns:
+        Dict mapping logical names to their config dicts.
+        If no 'databases' key exists, returns a synthetic dict
+        with just "default" pointing to the legacy 'database' config.
+    """
+    config = load_config()
+    databases = config.get("databases")
+    if databases:
+        return databases
+    # Legacy mode: synthesize a single "default" entry
+    return {"default": config.get("database", {})}
+
+
+def get_database_type(db_name: Optional[str] = None) -> str:
+    """
+    Get the database type ("postgres" or "sqlite") for a named database.
+
+    Args:
+        db_name: Logical database name, or None for default.
 
     Returns:
         Database type string
     """
     config = load_config()
+    databases = config.get("databases")
+
+    if databases:
+        name = db_name or get_default_database_name()
+        if name in databases:
+            return databases[name].get("type", "postgres")
+
+    # Legacy fallback
     db_config = config.get("database", {})
     return db_config.get("type", "postgres")
 
 
-def is_postgres() -> bool:
-    """Check if using PostgreSQL."""
-    return get_database_type() == "postgres"
+def is_postgres(db_name: Optional[str] = None) -> bool:
+    """Check if using PostgreSQL for the given (or default) database."""
+    return get_database_type(db_name) == "postgres"
 
 
-def is_sqlite() -> bool:
-    """Check if using SQLite."""
-    return get_database_type() == "sqlite"
+def is_sqlite(db_name: Optional[str] = None) -> bool:
+    """Check if using SQLite for the given (or default) database."""
+    return get_database_type(db_name) == "sqlite"
 
 
 def get_embedding_dimension() -> int:

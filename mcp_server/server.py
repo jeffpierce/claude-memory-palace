@@ -16,8 +16,9 @@ if project_root not in sys.path:
 
 from mcp.server import FastMCP
 
-from memory_palace.database import init_db, get_engine
+from memory_palace.database import ensure_database_exists, init_db, get_engine
 from mcp_server.tools import register_all_tools
+from mcp_server.extensions import load_extensions
 
 # Initialize the MCP server using FastMCP (has .tool() decorator)
 server = FastMCP("memory-palace-v2")
@@ -27,6 +28,9 @@ mcp = server
 
 # Register all tools
 register_all_tools(server)
+
+# Load extensions (if configured)
+load_extensions(server)
 
 
 def _check_schema_version():
@@ -79,8 +83,12 @@ def _check_schema_version():
 
 async def main_async():
     """Run the MCP server (async)."""
-    # Initialize database
-    init_db()
+    # Initialize all configured databases
+    from memory_palace.config_v2 import get_configured_databases
+    databases = get_configured_databases()
+    for db_name in databases:
+        ensure_database_exists(db_name)
+        init_db(db_name)
 
     # Check schema version before accepting connections
     _check_schema_version()

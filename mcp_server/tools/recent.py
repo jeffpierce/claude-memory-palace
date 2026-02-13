@@ -17,6 +17,7 @@ def register_recent(mcp):
         memory_type: Optional[str] = None,
         instance_id: Optional[str] = None,
         include_archived: bool = False,
+        database: Optional[str] = None,
     ) -> dict[str, Any]:
         # Last X memories, newest first. Default: title-card (id, subject, type, project, date).
         """
@@ -33,4 +34,5 @@ def register_recent(mcp):
             memory_type=memory_type,
             instance_id=instance_id,
             include_archived=include_archived,
+            database=database,
         )

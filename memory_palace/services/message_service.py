@@ -58,7 +58,7 @@ def _get_channel_name(channel: Optional[str], to_instance: Optional[str]) -> str
     return "memory_palace_msg_all"
 
 
-def _pg_notify(channel_name: str, payload: Dict[str, Any]) -> None:
+def _pg_notify(channel_name: str, payload: Dict[str, Any], database: Optional[str] = None) -> None:
     """
     Send a Postgres NOTIFY on the given channel.
 
@@ -67,9 +67,10 @@ def _pg_notify(channel_name: str, payload: Dict[str, Any]) -> None:
     Args:
         channel_name: The notification channel (e.g., "memory_palace_msg_channel1")
         payload: Dict to serialize as JSON and send as payload
+        database: Optional database name override
     """
     try:
-        engine = get_engine()
+        engine = get_engine(database)
         with engine.connect() as conn:
             # Use raw SQL for NOTIFY
             payload_json = json.dumps(payload)
@@ -92,6 +93,7 @@ def send_message(
     channel: Optional[str] = None,
     priority: int = 0,
     expires_at: Optional[datetime] = None,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Send a message to an instance or channel.
@@ -120,7 +122,7 @@ def send_message(
         {"success": True, "id": X} on success
         {"error": "..."} on failure
     """
-    session = get_session()
+    session = get_session(database)
     try:
         valid_instances = _get_valid_instances()
         valid_to_instances = valid_instances + ["all"]
@@ -182,7 +184,7 @@ def send_message(
                     "priority": priority,
                 }
 
-                _pg_notify(notify_channel, payload)
+                _pg_notify(notify_channel, payload, database)
 
                 # Mark as delivered
                 message.delivery_status = "delivered"
@@ -204,6 +206,7 @@ def get_messages(
     message_type: Optional[str] = None,
     limit: int = 50,
     include_expired: bool = False,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Get messages for an instance.
@@ -224,7 +227,7 @@ def get_messages(
         {"count": N, "messages": [...]} on success
         {"error": "..."} on failure
     """
-    session = get_session()
+    session = get_session(database)
     try:
         valid_instances = _get_valid_instances()
 
@@ -282,7 +285,7 @@ def get_messages(
         session.close()
 
 
-def mark_message_read(message_id: int, instance_id: str) -> Dict[str, Any]:
+def mark_message_read(message_id: int, instance_id: str, database: Optional[str] = None) -> Dict[str, Any]:
     """
     Mark a message as read by the given instance.
 
@@ -294,7 +297,7 @@ def mark_message_read(message_id: int, instance_id: str) -> Dict[str, Any]:
         {"message": "Marked read"} on success
         {"error": "..."} on failure
     """
-    session = get_session()
+    session = get_session(database)
     try:
         valid_instances = _get_valid_instances()
 
@@ -317,7 +320,7 @@ def mark_message_read(message_id: int, instance_id: str) -> Dict[str, Any]:
         session.close()
 
 
-def mark_message_unread(message_id: int) -> Dict[str, Any]:
+def mark_message_unread(message_id: int, database: Optional[str] = None) -> Dict[str, Any]:
     """
     Mark a message as unread (clear read_at and read_by).
 
@@ -328,7 +331,7 @@ def mark_message_unread(message_id: int) -> Dict[str, Any]:
         {"message": "Marked unread"} on success
         {"error": "..."} on failure
     """
-    session = get_session()
+    session = get_session(database)
     try:
         message = session.query(Message).filter(Message.id == message_id).first()
 
@@ -427,6 +430,7 @@ def poll_messages(
     instance_id: str,
     since: Optional[datetime] = None,
     channel: Optional[str] = None,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Poll for new messages created after a given timestamp.
@@ -443,7 +447,7 @@ def poll_messages(
         {"count": N, "messages": [...]} on success
         {"error": "..."} on failure
     """
-    session = get_session()
+    session = get_session(database)
     try:
         valid_instances = _get_valid_instances()
 

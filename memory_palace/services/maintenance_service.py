@@ -381,6 +381,7 @@ def _find_cross_project_auto_links(
 def cleanup_cross_project_auto_links(
     dry_run: bool = True,
     log_path: Optional[str] = None,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Remove auto-linked edges that cross project boundaries.
@@ -407,7 +408,7 @@ def cleanup_cross_project_auto_links(
     except ImportError:
         toons = None
 
-    db = get_session()
+    db = get_session(database)
     try:
         findings = _find_cross_project_auto_links(db, limit=100000)
 
@@ -457,7 +458,8 @@ def audit_palace(
     checks: Optional[List[str]] = None,
     thresholds: Optional[Dict[str, Any]] = None,
     project: Optional[str] = None,
-    limit_per_category: int = 20
+    limit_per_category: int = 20,
+    database: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Audit palace health and return actionable findings.
@@ -474,7 +476,7 @@ def audit_palace(
     Returns:
         Dict with findings by category and summary
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Default to all checks if none specified
         if checks is None:
@@ -598,7 +600,8 @@ def batch_archive_memories(
     centrality_protection: bool = True,
     min_centrality_threshold: int = 5,
     dry_run: bool = True,
-    reason: Optional[str] = None
+    reason: Optional[str] = None,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Archive multiple memories matching criteria.
@@ -634,7 +637,8 @@ def batch_archive_memories(
         centrality_protection=centrality_protection,
         min_centrality_threshold=min_centrality_threshold,
         dry_run=dry_run,
-        reason=reason
+        reason=reason,
+        database=database
     )
 
 
@@ -645,7 +649,8 @@ def reembed_memories(
     all_memories: bool = False,
     missing_only: bool = False,
     batch_size: int = 50,
-    dry_run: bool = True
+    dry_run: bool = True,
+    database: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Regenerate embeddings for memories.
@@ -668,7 +673,7 @@ def reembed_memories(
     Returns:
         Dict with preview or execution results
     """
-    db = get_session()
+    db = get_session(database)
     try:
         # Build query
         if missing_only:
