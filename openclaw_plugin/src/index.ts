@@ -35,24 +35,31 @@ interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, any>;
-  execute: (params: Record<string, any>) => Promise<any>;
+  execute: (toolCallId: string, params: Record<string, any>, signal?: AbortSignal) => Promise<any>;
 }
 
 let bridge: PalaceBridge | null = null;
 
 /**
  * Plugin initialization — called by OpenClaw gateway on load.
+ *
+ * MUST be synchronous — OpenClaw ignores async registration.
+ * Bridge connects lazily on first tool call via auto-reconnect.
  */
-export async function activate(context: PluginContext): Promise<void> {
-  const { config, logger } = context;
+export function register(context: any): void {
+  const logger = context.logger;
+  // Plugin-specific config is in pluginConfig, NOT config (which is the full OpenClaw config)
+  const pluginCfg = context.pluginConfig ?? context.config ?? {};
+
+  logger.info(`Plugin config keys: ${Object.keys(pluginCfg).join(", ")}`);
 
   // Build bridge config
   const bridgeConfig: BridgeConfig = {};
-  if (config.bridgeCommand) bridgeConfig.bridgeCommand = config.bridgeCommand;
-  if (config.pythonPath) bridgeConfig.pythonPath = config.pythonPath;
-  if (config.instanceId) bridgeConfig.instanceId = config.instanceId;
+  if (pluginCfg.bridgeCommand) bridgeConfig.bridgeCommand = pluginCfg.bridgeCommand;
+  if (pluginCfg.pythonPath) bridgeConfig.pythonPath = pluginCfg.pythonPath;
+  if (pluginCfg.instanceId) bridgeConfig.instanceId = pluginCfg.instanceId;
 
-  // Create and start bridge
+  // Create bridge — do NOT start yet, lazy connect on first tool call
   bridge = new PalaceBridge(bridgeConfig);
 
   bridge.on("exit", (code: number | null, signal: string | null) => {
@@ -74,27 +81,35 @@ export async function activate(context: PluginContext): Promise<void> {
     }
   });
 
-  try {
-    await bridge.start();
-    logger.info(`Palace bridge connected (v${bridge.version}, ${bridge.tools} tools)`);
-  } catch (err: any) {
-    logger.error(`Failed to start palace bridge: ${err.message}`);
-    logger.warn("Tools will attempt auto-reconnect on first call");
-  }
-
-  // Register all tools
+  // Register all tools synchronously — bridge connects on first call
   for (const tool of tools) {
+    // Ensure required is always an array — OpenClaw calls .some() on it
+    const parameters = { ...tool.parameters };
+    if (!parameters.required) {
+      parameters.required = [];
+    }
+
     context.registerTool({
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters,
-      execute: async (params: Record<string, any>) => {
-        return bridge!.call(tool.method, params, tool.timeout || 30_000);
+      parameters,
+      execute: async (toolCallId: string, params: Record<string, any>) => {
+        const result = await bridge!.call(tool.method, params, tool.timeout || 30_000);
+        // OpenClaw expects Anthropic content block format: { content: [{type, text}] }
+        const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+        return { content: [{ type: "text", text }] };
       },
     });
   }
 
-  logger.info(`Registered ${tools.length} palace tools`);
+  logger.info(`Registered ${tools.length} palace tools (bridge connects on first call)`);
+
+  // Kick off bridge connection in background — non-blocking
+  bridge.start().then(() => {
+    logger.info(`Palace bridge connected (v${bridge!.version}, ${bridge!.tools} tools)`);
+  }).catch((err: any) => {
+    logger.warn(`Bridge pre-connect failed: ${err.message} — will retry on first tool call`);
+  });
 }
 
 /**
@@ -106,6 +121,12 @@ export async function deactivate(): Promise<void> {
     bridge = null;
   }
 }
+
+// Default export for OpenClaw plugin loader
+export default {
+  register,
+  deactivate
+};
 
 export { PalaceBridge } from "./bridge";
 export { tools } from "./tools";

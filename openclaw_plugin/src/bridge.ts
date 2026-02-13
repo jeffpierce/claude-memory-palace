@@ -63,7 +63,7 @@ export class PalaceBridge extends EventEmitter {
     let args: string[];
     if (this.config.pythonPath) {
       command = this.config.pythonPath;
-      args = ["-m", "memory_palace.bridge"];
+      args = ["-u", "-m", "memory_palace.bridge"];  // -u = unbuffered stdout
     } else {
       command = this.config.bridgeCommand!;
       args = [];
@@ -74,9 +74,14 @@ export class PalaceBridge extends EventEmitter {
     if (this.config.instanceId) {
       env.MEMORY_PALACE_INSTANCE_ID = this.config.instanceId;
     }
+    // Force unbuffered Python output
+    env.PYTHONUNBUFFERED = "1";
+
+    console.error(`[bridge/spawn] command=${command} args=${JSON.stringify(args)}`);
+    console.error(`[bridge/spawn] PYTHONUNBUFFERED=${env.PYTHONUNBUFFERED} instanceId=${env.MEMORY_PALACE_INSTANCE_ID}`);
 
     this.process = spawn(command, args, {
-      stdio: ["pipe", "pipe", "inherit"],
+      stdio: ["pipe", "pipe", "pipe"],  // Changed stderr from inherit to pipe for logging
       env,
     });
 
@@ -95,11 +100,23 @@ export class PalaceBridge extends EventEmitter {
     });
 
     this.process.on("error", (err) => {
+      console.error(`[bridge/error] ${err.message}`);
       this.emit("error", err);
+    });
+
+    // Log stderr
+    this.process.stderr!.on("data", (chunk) => {
+      console.error(`[bridge/stderr] ${chunk.toString()}`);
+    });
+
+    // Log raw stdout before readline consumes it
+    this.process.stdout!.on("data", (chunk) => {
+      console.error(`[bridge/raw-stdout] ${chunk.length} bytes: ${chunk.toString().substring(0, 100)}`);
     });
 
     // Set up line-based reader on stdout
     this.readline = createInterface({ input: this.process.stdout! });
+    console.error(`[bridge/readline] interface created`);
     this.readline.on("line", (line: string) => this.handleLine(line));
 
     // Wait for ready handshake
@@ -131,13 +148,17 @@ export class PalaceBridge extends EventEmitter {
     const id = `req-${this.nextId++}`;
     const request = JSON.stringify({ id, method, params }) + "\n";
 
+    console.error(`[bridge/call] method=${method} reqId=${id} pending=${this.pending.size}`);
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        console.error(`[bridge/timeout] method=${method} reqId=${id} timed out after ${timeoutMs}ms`);
         reject(new Error(`Bridge request ${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       this.pending.set(id, { resolve, reject, timer });
+      console.error(`[bridge/write] writing ${request.length} bytes to stdin`);
       this.process!.stdin!.write(request);
     });
   }
@@ -211,11 +232,13 @@ export class PalaceBridge extends EventEmitter {
   // ── Internal ──────────────────────────────────────────────
 
   private handleLine(line: string): void {
+    console.error(`[bridge/ts] handleLine: ${line.substring(0, 200)}`);
     let msg: any;
     try {
       msg = JSON.parse(line);
     } catch {
       // Ignore non-JSON lines (shouldn't happen but be safe)
+      console.error(`[bridge/ts] failed to parse JSON: ${line.substring(0, 100)}`);
       return;
     }
 
@@ -241,10 +264,14 @@ export class PalaceBridge extends EventEmitter {
         this.pending.delete(msg.id);
         clearTimeout(pending.timer);
         if (msg.error) {
+          console.error(`[bridge/response] reqId=${msg.id} ERROR: ${msg.error.message}`);
           pending.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
         } else {
+          console.error(`[bridge/response] reqId=${msg.id} SUCCESS result=${JSON.stringify(msg.result).substring(0, 100)}`);
           pending.resolve(msg.result);
         }
+      } else {
+        console.error(`[bridge/response] reqId=${msg.id} NO PENDING REQUEST FOUND`);
       }
       return;
     }

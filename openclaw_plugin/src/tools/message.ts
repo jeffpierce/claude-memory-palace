@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 export const message = {
-  name: "message",
+  name: "palace_message",
   description: "Inter-instance messaging with pubsub. Actions: send, get, mark_read, mark_unread, subscribe, unsubscribe. Types: handoff, status, question, fyi, context, event, message. to_instance 'all' for broadcast. priority 0-10.",
   method: "message",
   parameters: Type.Object({

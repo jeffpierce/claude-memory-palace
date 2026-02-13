@@ -18,7 +18,6 @@ The bridge supports:
   3. Maintenance (audit, reembed, stats, reflect)
   4. Code indexing (code_remember_tool)
   5. Real-time pubsub via Postgres LISTEN/NOTIFY
-  6. OpenClaw push notifications via HTTP or shell commands
 """
 
 import json
@@ -29,11 +28,6 @@ import time
 from typing import Any, Callable, Dict, Optional
 
 from memory_palace.config import is_postgres
-from memory_palace.config_v2 import (
-    get_notify_command,
-    get_instance_route,
-    get_instance_routes,
-)
 from memory_palace.database import get_engine, init_db
 from memory_palace.services import (
     remember,
@@ -55,10 +49,6 @@ from memory_palace.services import (
     reembed_memories,
     get_memory_stats,
     reflect,
-)
-from memory_palace.services.message_service import (
-    execute_openclaw_wake,
-    execute_notify_hook,
 )
 
 
@@ -115,7 +105,6 @@ def _handle_message(params: Dict[str, Any]) -> Dict[str, Any]:
     Custom handler for message dispatch based on action parameter.
 
     Dispatches to send_message, get_messages, mark_message_read, etc.
-    Handles post-send notifications via HTTP gateway or shell command.
 
     Args:
         params: Request parameters including action
@@ -143,43 +132,6 @@ def _handle_message(params: Dict[str, Any]) -> Dict[str, Any]:
             channel=params.get("channel"),
             priority=params.get("priority", 0),
         )
-
-        # Post-send notifications for cross-instance delivery (non-bridge recipients)
-        if result.get("success"):
-            _notify_params = {
-                "from_instance": from_instance,
-                "to_instance": to_instance,
-                "message_type": params.get("message_type", "message"),
-                "subject": params.get("subject"),
-                "message_id": result.get("id", ""),
-                "priority": params.get("priority", 0),
-            }
-
-            # Try instance_routes (HTTP wake) for non-bridge recipients
-            route = get_instance_route(to_instance)
-            if route:
-                execute_openclaw_wake(route=route, **_notify_params)
-            elif to_instance == "all":
-                for inst_id, inst_route in get_instance_routes().items():
-                    if inst_id != from_instance:
-                        execute_openclaw_wake(
-                            route=inst_route,
-                            **{**_notify_params, "to_instance": inst_id},
-                        )
-
-            # Fallback to notify_command (shell exec)
-            notify_cmd = get_notify_command()
-            if notify_cmd is not None:
-                execute_notify_hook(
-                    command_template=notify_cmd,
-                    send_result=result,
-                    from_instance=from_instance,
-                    to_instance=to_instance,
-                    message_type=params.get("message_type", "message"),
-                    subject=params.get("subject"),
-                    channel=params.get("channel"),
-                    priority=params.get("priority", 0),
-                )
 
         return result
 
@@ -367,6 +319,23 @@ def main() -> None:
             method = request.get("method")
             params = request.get("params", {})
 
+            # Auto-parse stringified params (OpenClaw may serialize them)
+            if isinstance(params, str):
+                sys.stderr.write(
+                    f"[bridge] WARNING: params is str for method={method}: {repr(params)[:300]}\n"
+                )
+                sys.stderr.flush()
+                try:
+                    params = json.loads(params)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            # Log params type for debugging
+            sys.stderr.write(
+                f"[bridge] dispatch method={method} params_type={type(params).__name__} keys={list(params.keys()) if isinstance(params, dict) else 'N/A'}\n"
+            )
+            sys.stderr.flush()
+
             # Bridge management methods (prefixed with _)
             if method == "_shutdown":
                 _shutdown_event.set()
@@ -470,6 +439,11 @@ def main() -> None:
                 result = handler(params)
                 _write_response({"id": req_id, "result": result})
             except Exception as e:
+                sys.stderr.write(
+                    f"[bridge] method={method} params_type={type(params).__name__} "
+                    f"params_repr={repr(params)[:500]} error={e}\n"
+                )
+                sys.stderr.flush()
                 _write_response(
                     {
                         "id": req_id,

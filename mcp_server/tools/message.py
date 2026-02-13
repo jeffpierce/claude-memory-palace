@@ -10,13 +10,6 @@ from memory_palace.services.message_service import (
     mark_message_unread,
     subscribe,
     unsubscribe,
-    execute_openclaw_wake,
-    execute_notify_hook,
-)
-from memory_palace.config_v2 import (
-    get_notify_command,
-    get_instance_route,
-    get_instance_routes,
 )
 from mcp_server.toon_wrapper import toon_response
 
@@ -66,44 +59,6 @@ def register_message(mcp):
                 channel=channel,
                 priority=priority,
             )
-
-            # Post-send notifications (fire-and-forget, never fail the send)
-            if result.get("success"):
-                _notify_params = {
-                    "from_instance": from_instance,
-                    "to_instance": to_instance,
-                    "message_type": message_type,
-                    "subject": subject,
-                    "message_id": result.get("id", ""),
-                    "priority": priority,
-                }
-
-                # 1. Try instance_routes (HTTP wake) — preferred
-                route = get_instance_route(to_instance)
-                if route:
-                    execute_openclaw_wake(route=route, **_notify_params)
-                elif to_instance == "all":
-                    # Broadcast: wake all routed instances except sender
-                    for inst_id, inst_route in get_instance_routes().items():
-                        if inst_id != from_instance:
-                            execute_openclaw_wake(
-                                route=inst_route,
-                                **{**_notify_params, "to_instance": inst_id},
-                            )
-
-                # 2. Fallback to notify_command (shell exec) — backwards compat
-                notify_cmd = get_notify_command()
-                if notify_cmd is not None:
-                    execute_notify_hook(
-                        command_template=notify_cmd,
-                        send_result=result,
-                        from_instance=from_instance,
-                        to_instance=to_instance,
-                        message_type=message_type,
-                        subject=subject,
-                        channel=channel,
-                        priority=priority,
-                    )
 
             return result
         elif action == "get":
