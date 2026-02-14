@@ -268,6 +268,7 @@ def _start_listener_loop(
                                 "to": payload.get("to_instance"),
                                 "type": payload.get("message_type"),
                                 "subject": payload.get("subject"),
+                                "channel": payload.get("channel"),
                                 "id": payload.get("message_id"),
                                 "priority": payload.get("priority", 0),
                             },
