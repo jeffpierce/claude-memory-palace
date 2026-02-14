@@ -62,7 +62,7 @@ Several tools were consolidated or replaced. If you reference tool names in agen
 
 | Tool | What Changed |
 |------|-------------|
-| `memory_remember` | Added `foundational`, `tags`, `auto_link`, and `project` now accepts a list |
+| `memory_set` | Added `foundational`, `tags`, `auto_link`, and `project` now accepts a list |
 | `memory_recall` | Added centrality-weighted ranking and automatic graph context |
 | `memory_get` | Added graph traversal (`traverse`), graph context (`include_graph`), multi-ID fetch |
 | `memory_archive` | Added `dry_run` safety, filter-based archival, centrality protection |

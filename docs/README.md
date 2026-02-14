@@ -81,13 +81,13 @@ Memory Palace provides 13 core MCP tools organized into five categories, plus ex
 
 | Tool | Description |
 |------|-------------|
-| `memory_remember` | Store a new memory with automatic linking |
+| `memory_set` | Store a new memory with automatic linking |
 | `memory_recall` | Search memories using semantic search with centrality-weighted ranking |
 | `memory_get` | Retrieve memories by ID with optional graph traversal |
 | `memory_recent` | Get the last X memories (default 20, max 200) |
 | `memory_archive` | Archive memories with protection for foundational/high-centrality nodes |
 
-#### memory_remember - Store Memories
+#### memory_set - Store Memories
 
 Stores a new memory with intelligent auto-linking based on semantic similarity.
 
@@ -131,7 +131,7 @@ Custom types are allowed - use descriptive names that fit your needs.
 
 **Example:**
 ```python
-memory_remember(
+memory_set(
     instance_id="engineering",
     memory_type="architecture",
     content="The authentication system uses JWT tokens with 24-hour expiry",
@@ -797,7 +797,7 @@ When `synthesize=False`, results are returned in TOON (Thoughtful Object Observa
 
 **Storing a memory:**
 ```
-"Remember that the API endpoint changed from /v1/users to /v2/users on 2024-01-15"
+"Store that the API endpoint changed from /v1/users to /v2/users on 2024-01-15"
 ```
 
 **Recalling memories:**
@@ -838,7 +838,7 @@ memory_recall(query="authentication", synthesize=False)
 **Multi-project memories:**
 ```python
 # Store a memory in multiple projects
-memory_remember(
+memory_set(
     instance_id="engineering",
     memory_type="architecture",
     content="All services use standard retry with exponential backoff",

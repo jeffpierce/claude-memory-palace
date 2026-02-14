@@ -221,7 +221,7 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
   │ Agent A │         │ Agent B │
   └────┬────┘         └────┬────┘
        │                   │
-       │  memory_remember  │  memory_recall
+       │  memory_set       │  memory_recall
        │  message(send)    │  message(get)
        │                   │
   ┌────┴───────────────────┴────┐
@@ -230,7 +230,7 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
   │     message bus)            │
   └────┬───────────────────┬────┘
        │                   │
-       │  memory_recall    │  memory_remember
+       │  memory_recall    │  memory_set
        │  message(get)     │  message(send)
        │                   │
   ┌────┴────┐         ┌────┴────┐
@@ -452,7 +452,7 @@ Use for: identity information, core principles, critical architectural decisions
 
 **Status:** ✅ Shipping
 
-New memories automatically find similar existing memories and create typed relationship edges. This happens during `memory_remember` with no manual intervention.
+New memories automatically find similar existing memories and create typed relationship edges. This happens during `memory_set` with no manual intervention.
 
 ### Two-Tier System
 

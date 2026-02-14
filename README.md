@@ -97,7 +97,7 @@ The MCP memory space is active. Here's how Memory Palace stacks up against the m
 
 | Tool | Description |
 |------|-------------|
-| `memory_remember` | Store a new memory with optional auto-linking to similar memories |
+| `memory_set` | Store a new memory with optional auto-linking to similar memories |
 | `memory_recall` | Semantic search with centrality-weighted ranking and graph context |
 | `memory_get` | Retrieve memories by ID with optional graph traversal (BFS) |
 | `memory_recent` | Get the last X memories — title-card format by default, verbose on request |

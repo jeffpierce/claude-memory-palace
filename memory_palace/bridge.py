@@ -7,7 +7,7 @@ dispatches to service functions, and returns JSON responses on stdout.
 
 Protocol:
   - Startup: Emit {"ready": true, "version": "2.0.1", "tools": N}
-  - Request: {"id": "req-001", "method": "memory_remember", "params": {...}}
+  - Request: {"id": "req-001", "method": "memory_set", "params": {...}}
   - Response: {"id": "req-001", "result": {...}}
   - Error: {"id": "req-001", "error": {"message": "...", "code": "ERROR_CODE"}}
   - Server events (pubsub): {"event": "new_message", "data": {...}} (no id field)
@@ -186,7 +186,7 @@ def _handle_message(params: Dict[str, Any]) -> Dict[str, Any]:
 
 # Dispatch table mapping method names to handlers
 DISPATCH: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
-    "memory_remember": lambda params: remember(**params),
+    "memory_set": lambda params: remember(**params),
     "memory_recall": lambda params: recall(**params),
     "memory_get": _handle_memory_get,
     "memory_recent": lambda params: get_recent_memories(**params),

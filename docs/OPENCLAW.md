@@ -152,7 +152,7 @@ Issues a PostgreSQL `UNLISTEN` for the specified channel.
 
 The bridge exposes 13 Memory Palace methods:
 
-1. `memory_remember`
+1. `memory_set`
 2. `memory_recall`
 3. `memory_get`
 4. `memory_recent`
