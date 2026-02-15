@@ -59,6 +59,8 @@ See [docs/models.md](docs/models.md) for the full model guide with VRAM budgets 
 - **Code Indexing** — Index source files as prose descriptions for natural language code search
 - **Inter-Instance Messaging** — Unified pub/sub messaging between AI instances with channels, priorities, and push notifications via OpenClaw gateway wake
 - **Transcript Reflection** — Automatically extract memories from conversation logs
+- **Named Databases** — Domain partitions (life, work, per-project) with auto-derivation and runtime management
+- **OpenClaw Native Plugin** — 13 tools registered directly with the gateway, zero MCP overhead, real-time pubsub wake
 - **Multi-Backend** — SQLite for personal use, PostgreSQL + pgvector for teams
 - **Local Processing** — All embeddings, extraction, and synthesis run locally via Ollama
 - **MCP Integration** — Works natively with any MCP-compatible client (Claude Desktop, Claude Code, etc.)
@@ -95,7 +97,7 @@ The MCP memory space is active. Here's how Memory Palace stacks up against the m
 
 | Tool | Description |
 |------|-------------|
-| `memory_remember` | Store a new memory with optional auto-linking to similar memories |
+| `memory_set` | Store a new memory with optional auto-linking to similar memories |
 | `memory_recall` | Semantic search with centrality-weighted ranking and graph context |
 | `memory_get` | Retrieve memories by ID with optional graph traversal (BFS) |
 | `memory_recent` | Get the last X memories — title-card format by default, verbose on request |
@@ -190,9 +192,14 @@ Configuration loads from `~/.memory-palace/config.json` with environment variabl
 ```json
 {
   "database": {
-    "type": "sqlite",
-    "url": null
+    "type": "postgres",
+    "url": "postgresql://localhost:5432/memory_palace"
   },
+  "databases": {
+    "default": {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace"},
+    "life":    {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace_life"}
+  },
+  "default_database": "default",
   "ollama_url": "http://localhost:11434",
   "embedding_model": null,
   "llm_model": null,
@@ -205,10 +212,11 @@ Configuration loads from `~/.memory-palace/config.json` with environment variabl
     "suggest_threshold": 0.675
   },
   "toon_output": true,
-  "instances": ["desktop", "code", "web"],
+  "extensions": ["mcp_server.extensions.db_manager"],
+  "instances": ["support", "engineering", "analytics"],
   "notify_command": null,
   "instance_routes": {
-    "prime": {
+    "support": {
       "gateway": "http://localhost:18789",
       "token": "your-gateway-token-here"
     }
@@ -216,7 +224,7 @@ Configuration loads from `~/.memory-palace/config.json` with environment variabl
 }
 ```
 
-For PostgreSQL, set `database.type` to `"postgres"` and provide a connection URL. See [docs/architecture.md](docs/architecture.md) for backend details.
+The `databases` key enables named databases (domain partitions). If absent, the single `database` key is used. See [docs/POSTGRES.md](docs/POSTGRES.md) for PostgreSQL setup and [docs/architecture.md](docs/architecture.md) for backend details.
 
 ## Architecture
 
@@ -225,13 +233,15 @@ memory-palace/
 ├── mcp_server/              # MCP server package
 │   ├── server.py            # Server entry point
 │   ├── toon_wrapper.py      # TOON response encoding
-│   └── tools/               # 13 tool implementations
+│   ├── tools/               # 13 core tool implementations
+│   └── extensions/          # Extension tools (db_manager, switch_db)
 ├── memory_palace/           # Core library
 │   ├── models_v3.py         # SQLAlchemy models (Memory, MemoryEdge, Message)
-│   ├── database.py          # Database connection (SQLite / PostgreSQL)
+│   ├── database_v3.py       # Named engine registry (SQLite / PostgreSQL)
+│   ├── bridge.py            # OpenClaw bridge subprocess (NDJSON protocol)
 │   ├── embeddings.py        # Ollama embedding client
 │   ├── llm.py               # LLM integration (synthesis, classification)
-│   ├── config_v2.py         # Configuration with auto-link settings
+│   ├── config_v2.py         # Configuration with named databases + auto-link
 │   ├── services/            # Business logic layer
 │   │   ├── memory_service.py      # remember, recall, archive, stats
 │   │   ├── graph_service.py       # link, unlink, traverse
@@ -240,6 +250,10 @@ memory-palace/
 │   │   ├── code_service.py        # code indexing + retrieval
 │   │   └── reflection_service.py  # transcript extraction
 │   └── migrations/          # Schema migration scripts
+├── openclaw_plugin/         # Native OpenClaw plugin (TypeScript)
+│   ├── src/index.ts         # Plugin registration + session registry + wake dispatch
+│   ├── src/bridge.ts        # PalaceBridge class (NDJSON over stdin/stdout)
+│   └── src/tools/           # 13 tool definitions mapped to bridge methods
 ├── setup/                   # Setup wizard
 ├── extensions/              # Optional extensions (Moltbook gateway, TOON converter)
 ├── examples/                # Integration examples and walkthroughs
@@ -275,6 +289,8 @@ Extensions are independent from the core Memory Palace server and can be used se
 | Document | Description |
 |----------|-------------|
 | [docs/README.md](docs/README.md) | Detailed installation, configuration, and usage guide |
+| [docs/OPENCLAW.md](docs/OPENCLAW.md) | OpenClaw native plugin guide — bridge protocol, pubsub wake, session discovery |
+| [docs/POSTGRES.md](docs/POSTGRES.md) | PostgreSQL setup, named databases, LISTEN/NOTIFY mechanics |
 | [docs/architecture.md](docs/architecture.md) | Design vision, knowledge graph, backends, scaling roadmap |
 | [docs/models.md](docs/models.md) | Model selection guide with VRAM budgets |
 | [docs/use-cases.md](docs/use-cases.md) | Real-world use cases from personal to enterprise |

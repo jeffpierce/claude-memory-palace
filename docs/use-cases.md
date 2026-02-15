@@ -71,10 +71,10 @@ Web AI:        memory_recall("authentication architecture")
 **Solution:** Store architectural decisions, gotchas, and tribal knowledge in Memory Palace. New sessions recall what they need on demand instead of ingesting everything upfront.
 
 ```
-memory_remember: "The payment service uses an outbox pattern for event publishing. 
-                  Never call the event bus directly — always write to the outbox 
-                  table and let the relay pick it up. Direct calls caused duplicate 
-                  charges in prod (incident INC-2847, March 2025)."
+memory_set: "The payment service uses an outbox pattern for event publishing.
+            Never call the event bus directly — always write to the outbox
+            table and let the relay pick it up. Direct calls caused duplicate
+            charges in prod (incident INC-2847, March 2025)."
 
 Any future session: memory_recall("how does payment event publishing work")
 → Gets the pattern, the reason, and the incident that proved why it matters.
@@ -93,8 +93,8 @@ Any future session: memory_recall("how does payment event publishing work")
 **Solution:** Team Memory Palace (PostgreSQL backend). All team members' AI instances read from and write to the same memory store.
 
 ```
-Alice's AI:  memory_remember("ARM deploy fix: the base Docker image must use 
-             --platform=linux/arm64 explicitly. The multi-arch manifest doesn't 
+Alice's AI:  memory_set("ARM deploy fix: the base Docker image must use
+             --platform=linux/arm64 explicitly. The multi-arch manifest doesn't
              resolve correctly behind our corporate proxy.")
 
 Bob's AI:    memory_recall("ARM deployment issues")
@@ -118,25 +118,25 @@ Agent: Search
   Role: Find sources
   Loop:
     - Search for relevant papers/articles
-    - memory_remember each finding with source, key claims, relevance score
+    - memory_set each finding with source, key claims, relevance score
     - message(action="send") to "analysis" when batch is ready
 
-Agent: Analysis  
+Agent: Analysis
   Role: Evaluate claims
   Loop:
     - message(action="get") from "search"
     - memory_recall recent findings
     - Cross-reference claims, identify contradictions
-    - memory_remember analysis results
+    - memory_set analysis results
     - message(action="send") to "synthesis" when analysis batch is complete
 
 Agent: Synthesis
   Role: Produce final output
   Loop:
-    - message(action="get") from "analysis"  
+    - message(action="get") from "analysis"
     - memory_recall all findings + analysis
     - Generate cohesive research summary
-    - memory_remember final synthesis
+    - memory_set final synthesis
 ```
 
 No single agent holds everything in context. The memory store IS the shared state. Each agent can be a different model optimized for its task.
@@ -154,15 +154,15 @@ No single agent holds everything in context. The memory store IS the shared stat
 ```
 Agent: Security Reviewer (could be a security-tuned model)
   - Reviews diff for vulnerabilities
-  - memory_remember each finding: type, severity, file, line, recommendation
+  - memory_set each finding: type, severity, file, line, recommendation
 
-Agent: Performance Reviewer (could be a different model)  
+Agent: Performance Reviewer (could be a different model)
   - Reviews diff for N+1 queries, missing indexes, unnecessary allocations
-  - memory_remember each finding with impact estimate
+  - memory_set each finding with impact estimate
 
 Agent: Style Reviewer (could be a cheap/fast local model)
   - Checks naming conventions, documentation, test coverage
-  - memory_remember each finding
+  - memory_set each finding
 
 Agent: Summary Writer (could be a frontier model for synthesis quality)
   - memory_recall all findings from the review
@@ -185,15 +185,15 @@ Cost-effective: expensive models only where they add value. Fast local models ha
 ```
 Agent: Log Monitor
   - Watches application logs
-  - memory_remember anomalies: "Error rate for /api/payments spiked 3x at 14:23 UTC"
+  - memory_set anomalies: "Error rate for /api/payments spiked 3x at 14:23 UTC"
 
-Agent: Social Monitor  
+Agent: Social Monitor
   - Watches Twitter/Reddit for brand mentions
-  - memory_remember sentiment shifts: "Negative sentiment spike on Reddit about checkout flow"
+  - memory_set sentiment shifts: "Negative sentiment spike on Reddit about checkout flow"
 
 Agent: Metrics Monitor
   - Watches Grafana/Datadog dashboards
-  - memory_remember threshold breaches: "P99 latency for payment service exceeded 2s"
+  - memory_set threshold breaches: "P99 latency for payment service exceeded 2s"
 
 Agent: Pattern Detector (runs every 15 min)
   - memory_recall recent observations across all sources
@@ -213,10 +213,10 @@ Agent: Pattern Detector (runs every 15 min)
 
 ```
 # Store architectural knowledge
-memory_remember: "PaymentService uses the outbox pattern for event publishing"
-memory_remember: "EventBus consumes from the outbox relay"
-memory_remember: "Direct EventBus calls caused duplicate charges (INC-2847)"
-memory_remember: "Policy: Never call EventBus directly, always use outbox"
+memory_set: "PaymentService uses the outbox pattern for event publishing"
+memory_set: "EventBus consumes from the outbox relay"
+memory_set: "Direct EventBus calls caused duplicate charges (INC-2847)"
+memory_set: "Policy: Never call EventBus directly, always use outbox"
 
 # Link them
 memory_link(PaymentService → OutboxPattern, "uses")

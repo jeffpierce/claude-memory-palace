@@ -221,7 +221,7 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
   │ Agent A │         │ Agent B │
   └────┬────┘         └────┬────┘
        │                   │
-       │  memory_remember  │  memory_recall
+       │  memory_set       │  memory_recall
        │  message(send)    │  message(get)
        │                   │
   ┌────┴───────────────────┴────┐
@@ -230,7 +230,7 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
   │     message bus)            │
   └────┬───────────────────┬────┘
        │                   │
-       │  memory_recall    │  memory_remember
+       │  memory_recall    │  memory_set
        │  message(get)     │  message(send)
        │                   │
   ┌────┴────┐         ┌────┴────┐
@@ -242,7 +242,55 @@ Memory Palace + handoffs turns agent coordination into a decentralized message b
 
 Each worker can be a *different model*. Cheap local model for routine tasks, frontier models for complex reasoning, specialized fine-tuned model for domain work — all sharing the same memory, all passing messages through the same bus. No single model needs to hold the whole picture.
 
-**Current implementation:** The unified `message` tool handles all inter-instance messaging with `action="send"`, `action="get"`, `action="mark_read"`, and pubsub operations (`subscribe`/`unsubscribe`). PostgreSQL uses LISTEN/NOTIFY for real-time push-based delivery. SQLite uses polling.
+**Current implementation:** The unified `message` tool handles all inter-instance messaging with `action="send"`, `action="get"`, `action="mark_read"`, and pubsub operations (`subscribe`/`unsubscribe`).
+
+**Delivery paths:**
+
+| Path | Backend | Mechanism | Latency |
+|------|---------|-----------|---------|
+| MCP + SQLite | SQLite | Polling on `message(action="get")` | Next poll |
+| MCP + Postgres | PostgreSQL | HTTP wake via `instance_routes` config | ~1s (wake + heartbeat) |
+| OpenClaw + Postgres | PostgreSQL | LISTEN/NOTIFY → bridge event → `enqueueSystemEvent` → heartbeat wake | ~250ms |
+
+The OpenClaw path achieves near-real-time delivery: PostgreSQL NOTIFY fires on message send, the bridge's listener thread picks it up within 100ms, and the plugin injects a system event that wakes the agent on the next heartbeat cycle. See [OPENCLAW.md](OPENCLAW.md) for the full wake chain and [POSTGRES.md](POSTGRES.md) for LISTEN/NOTIFY mechanics.
+
+## Client Paths
+
+Memory Palace supports two client integration paths:
+
+```
+┌──────────────┐         ┌──────────────┐
+│ MCP Clients  │         │   OpenClaw   │
+│ (Claude,     │         │   Gateway    │
+│  Cursor,     │         │              │
+│  etc.)       │         └──────┬───────┘
+└──────┬───────┘                │
+       │                  TS Plugin (index.ts)
+  MCP Protocol            NDJSON stdin/stdout
+       │                        │
+       ▼                  Python Bridge (bridge.py)
+┌──────────────┐                │
+│  MCP Server  │                │
+│  (server.py) │                │
+└──────┬───────┘                │
+       │                        │
+       └────────┬───────────────┘
+                │
+         ┌──────┴──────┐
+         │   Services  │
+         │   Layer     │
+         └──────┬──────┘
+                │
+         ┌──────┴──────┐
+         │  Database   │
+         └─────────────┘
+```
+
+**MCP path:** Standard MCP protocol. Works with any MCP-compatible client. Messaging uses polling or HTTP wake via `instance_routes`.
+
+**OpenClaw path:** Native plugin with zero MCP overhead. 13 tools registered directly with the gateway. Persistent bridge subprocess. Real-time pubsub wake via PostgreSQL LISTEN/NOTIFY. See [OPENCLAW.md](OPENCLAW.md) for the full plugin guide.
+
+Both paths share the same services layer and database — they're just different entry points.
 
 ## Backends
 
@@ -252,8 +300,8 @@ Memory Palace currently ships with two backends:
 SQLite (personal)     PostgreSQL (team/enterprise)
   Zero config            Concurrent access
   Single file            pgvector search
-  No dependencies        Scales with infra
-       └──── Same MCP API ────┘
+  No dependencies        LISTEN/NOTIFY pubsub
+       └──── Same API ────┘
 ```
 
 | Tier | Backend | Concurrent Agents | Use Case | Status |
@@ -269,6 +317,32 @@ SQLite (personal)     PostgreSQL (team/enterprise)
 - 📋 Planned — Architecture defined, implementation not started
 
 SQLite is the default for zero-config setup — no database server needed, just a file. PostgreSQL is a config change away, no code changes required.
+
+### Named Databases (Domain Partitions)
+
+**Status:** Shipping
+
+Named databases let you partition memory into separate domains — `life`, `work`, per-project, etc. Each gets its own PostgreSQL database (or SQLite file) with independent memories, edges, and messages.
+
+```json
+{
+  "databases": {
+    "default": {"type": "postgres", "url": "postgresql://localhost/memory_palace"},
+    "life":    {"type": "postgres", "url": "postgresql://localhost/memory_palace_life"},
+    "work":    {"type": "postgres", "url": "postgresql://localhost/memory_palace_work"}
+  },
+  "default_database": "default"
+}
+```
+
+Key design decisions:
+- **Auto-derivation:** Request a name that isn't configured, and the system derives a URL from the default database (appends `memory_palace_` prefix for Postgres, `_name` suffix for SQLite)
+- **Auto-creation:** PostgreSQL databases are created automatically on first access
+- **Named engine registry:** `database_v3.py` manages one engine + session factory per named database, created lazily
+- **Runtime tools:** The `db_manager` extension provides list/register/switch/status tools (runtime only, not persisted)
+- **Backward compatible:** If no `databases` key in config, falls back to legacy single `database` key
+
+See [POSTGRES.md](POSTGRES.md) for full setup guide.
 
 ### Why PostgreSQL for Scale
 
@@ -378,7 +452,7 @@ Use for: identity information, core principles, critical architectural decisions
 
 **Status:** ✅ Shipping
 
-New memories automatically find similar existing memories and create typed relationship edges. This happens during `memory_remember` with no manual intervention.
+New memories automatically find similar existing memories and create typed relationship edges. This happens during `memory_set` with no manual intervention.
 
 ### Two-Tier System
 

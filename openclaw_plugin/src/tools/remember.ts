@@ -1,9 +1,9 @@
 import { Type } from "@sinclair/typebox";
 
 export const remember = {
-  name: "memory_remember",
+  name: "memory_set",
   description: "Store new memory in palace. AUTO-LINKING: >=0.75 similarity auto-creates edges. memory_type is open-ended (fact, preference, event, insight, architecture, gotcha, solution, design_decision). foundational memories are never archived.",
-  method: "memory_remember",
+  method: "memory_set",
   parameters: Type.Object({
     instance_id: Type.String(),
     memory_type: Type.String(),

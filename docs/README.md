@@ -75,19 +75,19 @@ Adjust paths for your system.
 
 ## Usage
 
-Memory Palace v2.0 provides 13 MCP tools organized into five categories:
+Memory Palace provides 13 core MCP tools organized into five categories, plus extension tools for database management:
 
 ### Core Memory Tools
 
 | Tool | Description |
 |------|-------------|
-| `memory_remember` | Store a new memory with automatic linking |
+| `memory_set` | Store a new memory with automatic linking |
 | `memory_recall` | Search memories using semantic search with centrality-weighted ranking |
 | `memory_get` | Retrieve memories by ID with optional graph traversal |
 | `memory_recent` | Get the last X memories (default 20, max 200) |
 | `memory_archive` | Archive memories with protection for foundational/high-centrality nodes |
 
-#### memory_remember - Store Memories
+#### memory_set - Store Memories
 
 Stores a new memory with intelligent auto-linking based on semantic similarity.
 
@@ -99,7 +99,7 @@ Stores a new memory with intelligent auto-linking based on semantic similarity.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `instance_id` | string | Which AI instance is storing this (e.g., "desktop", "code", "web") |
+| `instance_id` | string | Which AI instance is storing this (e.g., "support", "engineering", "analytics") |
 | `memory_type` | string | Type of memory (see standard types below) |
 | `content` | string | The actual memory content |
 | `subject` | string | What/who this memory is about (optional but recommended) |
@@ -131,8 +131,8 @@ Custom types are allowed - use descriptive names that fit your needs.
 
 **Example:**
 ```python
-memory_remember(
-    instance_id="code",
+memory_set(
+    instance_id="engineering",
     memory_type="architecture",
     content="The authentication system uses JWT tokens with 24-hour expiry",
     subject="authentication system",
@@ -482,8 +482,8 @@ Inter-instance messaging with pub/sub support. Replaces the old separate `handof
 # Send a handoff message
 message(
     action="send",
-    from_instance="code",
-    to_instance="desktop",
+    from_instance="engineering",
+    to_instance="support",
     content="Completed indexing 42 files. Check memories 167-209.",
     message_type="handoff",
     subject="Code indexing complete",
@@ -491,15 +491,15 @@ message(
 )
 
 # Get unread messages
-message(action="get", instance_id="desktop")
+message(action="get", instance_id="support")
 
 # Subscribe to a channel
-message(action="subscribe", instance_id="desktop", channel="code-updates")
+message(action="subscribe", instance_id="support", channel="eng-updates")
 
 # Broadcast to all instances
 message(
     action="send",
-    from_instance="desktop",
+    from_instance="support",
     to_instance="all",
     content="System maintenance in 1 hour",
     message_type="status",
@@ -508,7 +508,7 @@ message(
 )
 
 # Mark message as read
-message(action="mark_read", message_id=42, instance_id="desktop")
+message(action="mark_read", message_id=42, instance_id="support")
 ```
 
 ### Code Indexing Tools
@@ -532,7 +532,7 @@ This separation is intentional: embedding raw code produces poor semantic matche
 |-----------|------|-------------|
 | `code_path` | string | Absolute path to the source file |
 | `project` | string | Project name (e.g., "memory-palace") |
-| `instance_id` | string | Which instance is indexing (e.g., "code") |
+| `instance_id` | string | Which instance is indexing (e.g., "engineering") |
 | `force` | bool | Re-index even if already indexed (default: false) |
 
 **Example workflow:**
@@ -542,13 +542,13 @@ This separation is intentional: embedding raw code produces poor semantic matche
 code_remember_tool(
     code_path="/project/src/database.py",
     project="my-app",
-    instance_id="code"
+    instance_id="engineering"
 )
 
 code_remember_tool(
     code_path="/project/src/api/endpoints.py",
     project="my-app",
-    instance_id="code"
+    instance_id="engineering"
 )
 
 # Later, query naturally using memory_recall
@@ -661,7 +661,7 @@ Get overview statistics about the memory palace.
 {
   "total_memories": 542,
   "by_type": {"fact": 150, "preference": 42, ...},
-  "by_instance": {"code": 200, "desktop": 342},
+  "by_instance": {"engineering": 200, "support": 342},
   "by_project": {"life": 300, "my-app": 200, ...},
   "foundational_count": 15,
   "archived_count": 23,
@@ -713,14 +713,14 @@ Extract memories from a conversation transcript using LLM.
 ```python
 # Extract from JSONL transcript
 memory_reflect(
-    instance_id="desktop",
+    instance_id="support",
     transcript_path="/path/to/conversation.jsonl",
     session_id="2024-01-15-morning"
 )
 
 # Preview without storing
 memory_reflect(
-    instance_id="desktop",
+    instance_id="support",
     transcript_path="/path/to/conversation.toon",
     dry_run=True
 )
@@ -730,6 +730,21 @@ memory_reflect(
 ```bash
 python tools/dump_memories_toon.py input.jsonl output.toon
 ```
+
+### Named Database Tools (Extension)
+
+Multi-database management for domain partitions (life, work, per-project). Requires the `db_manager` extension.
+
+| Tool | Description |
+|------|-------------|
+| `memory_list_databases` | List all configured databases with connection status and table counts |
+| `memory_register_database` | Register a new database at runtime (auto-derives URL if not provided) |
+| `memory_set_default_database` | Change which database is used when no `database=` param is given |
+| `memory_current_database` | Show current default database, URL, connection status |
+
+**Enable:** Add `"mcp_server.extensions.db_manager"` to the `"extensions"` list in config.
+
+See [POSTGRES.md](POSTGRES.md) for full named database setup and [mcp_server/extensions/README.md](../mcp_server/extensions/README.md) for extension details.
 
 ### Result Enhancement Features
 
@@ -782,7 +797,7 @@ When `synthesize=False`, results are returned in TOON (Thoughtful Object Observa
 
 **Storing a memory:**
 ```
-"Remember that the API endpoint changed from /v1/users to /v2/users on 2024-01-15"
+"Store that the API endpoint changed from /v1/users to /v2/users on 2024-01-15"
 ```
 
 **Recalling memories:**
@@ -823,8 +838,8 @@ memory_recall(query="authentication", synthesize=False)
 **Multi-project memories:**
 ```python
 # Store a memory in multiple projects
-memory_remember(
-    instance_id="code",
+memory_set(
+    instance_id="engineering",
     memory_type="architecture",
     content="All services use standard retry with exponential backoff",
     project=["my-app", "shared-patterns"],
@@ -845,21 +860,21 @@ memory_recall(query="retry patterns", project=["my-app", "shared-patterns"])
 # Desktop → Code
 message(
     action="send",
-    from_instance="desktop",
-    to_instance="code",
+    from_instance="support",
+    to_instance="engineering",
     content="Please index the authentication module files",
     message_type="handoff",
     priority=5
 )
 
 # Code checks messages
-message(action="get", instance_id="code")
+message(action="get", instance_id="engineering")
 
 # Code completes work and responds
 message(
     action="send",
-    from_instance="code",
-    to_instance="desktop",
+    from_instance="engineering",
+    to_instance="support",
     content="Indexed 12 files. See memories 200-212 for authentication patterns.",
     message_type="handoff"
 )
@@ -887,17 +902,25 @@ Configuration is loaded from `~/.memory-palace/config.json`:
 ```json
 {
   "database": {
-    "type": "sqlite",
-    "url": null
+    "type": "postgres",
+    "url": "postgresql://localhost:5432/memory_palace"
   },
+  "databases": {
+    "default": {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace"},
+    "life":    {"type": "postgres", "url": "postgresql://localhost:5432/memory_palace_life"}
+  },
+  "default_database": "default",
   "ollama_url": "http://localhost:11434",
   "embedding_model": null,
   "llm_model": null,
-  "instances": ["desktop", "code", "web"],
+  "extensions": ["mcp_server.extensions.db_manager"],
+  "instances": ["support", "engineering", "analytics"],
   "notify_command": null,
   "instance_routes": {}
 }
 ```
+
+The `databases` and `default_database` keys are optional. If absent, the system uses the legacy single `database` key. See [POSTGRES.md](POSTGRES.md) for named database setup.
 
 Environment variables override config file values.
 
@@ -908,13 +931,13 @@ The `instance_routes` config enables real-time push notifications when messages 
 ```json
 {
   "instance_routes": {
-    "prime": {
+    "support": {
       "gateway": "http://localhost:18789",
       "token": "your-gateway-token-here"
     },
-    "crashtest": {
+    "engineering": {
       "gateway": "http://localhost:18790",
-      "token": "crashtest-gateway-token-here"
+      "token": "your-other-token-here"
     }
   }
 }
@@ -942,6 +965,12 @@ The existing `notify_command` (shell hook) continues to work as a fallback or al
 ### Model Configuration
 
 See [models.md](models.md) for detailed model selection guide.
+
+## OpenClaw Integration
+
+Memory Palace can also run as a **native OpenClaw plugin**, registering all 13 tools directly with the OpenClaw gateway. This eliminates MCP protocol overhead and enables real-time pubsub wake — when a message arrives, the agent wakes automatically instead of waiting for the next poll.
+
+See [OPENCLAW.md](OPENCLAW.md) for the full plugin guide including installation, bridge protocol, and pubsub wake chain.
 
 ## Troubleshooting
 
@@ -988,13 +1017,15 @@ memory-palace/
 ├── mcp_server/              # MCP server package
 │   ├── server.py            # Server entry point
 │   ├── toon_wrapper.py      # TOON response encoding
-│   └── tools/               # 13 tool implementations
+│   ├── tools/               # 13 core tool implementations
+│   └── extensions/          # Extension tools (db_manager, switch_db)
 ├── memory_palace/           # Core library
 │   ├── models_v3.py         # SQLAlchemy models (Memory, MemoryEdge, Message)
-│   ├── database.py          # Database connection (SQLite / PostgreSQL)
+│   ├── database_v3.py       # Named engine registry (SQLite / PostgreSQL)
+│   ├── bridge.py            # OpenClaw bridge subprocess (NDJSON protocol)
 │   ├── embeddings.py        # Ollama embedding client
 │   ├── llm.py               # LLM integration (synthesis, classification)
-│   ├── config_v2.py         # Configuration with auto-link settings
+│   ├── config_v2.py         # Configuration with named databases + auto-link
 │   ├── services/            # Business logic layer
 │   │   ├── memory_service.py      # remember, recall, archive, stats
 │   │   ├── graph_service.py       # link, unlink, traverse
@@ -1003,6 +1034,10 @@ memory-palace/
 │   │   ├── code_service.py        # code indexing + retrieval
 │   │   └── reflection_service.py  # transcript extraction
 │   └── migrations/          # Schema migration scripts
+├── openclaw_plugin/         # Native OpenClaw plugin (TypeScript)
+│   ├── src/index.ts         # Plugin registration + session registry + wake dispatch
+│   ├── src/bridge.ts        # PalaceBridge class (NDJSON over stdin/stdout)
+│   └── src/tools/           # 13 tool definitions mapped to bridge methods
 ├── setup/                   # Setup wizard
 ├── extensions/              # Optional extensions (Moltbook gateway, TOON converter)
 ├── docs/                    # Documentation

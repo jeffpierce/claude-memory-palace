@@ -305,7 +305,7 @@ def pg_notify(channel: str, payload: str = "", db_name: Optional[str] = None):
     engine = get_engine(name)
     with engine.connect() as conn:
         escaped_payload = payload.replace("'", "''")
-        conn.execute(text(f"NOTIFY {channel}, '{escaped_payload}'"))
+        conn.execute(text(f'NOTIFY "{channel}", \'{escaped_payload}\''))
         conn.commit()
 
 

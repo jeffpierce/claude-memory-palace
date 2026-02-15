@@ -7,7 +7,7 @@ dispatches to service functions, and returns JSON responses on stdout.
 
 Protocol:
   - Startup: Emit {"ready": true, "version": "2.0.1", "tools": N}
-  - Request: {"id": "req-001", "method": "memory_remember", "params": {...}}
+  - Request: {"id": "req-001", "method": "memory_set", "params": {...}}
   - Response: {"id": "req-001", "result": {...}}
   - Error: {"id": "req-001", "error": {"message": "...", "code": "ERROR_CODE"}}
   - Server events (pubsub): {"event": "new_message", "data": {...}} (no id field)
@@ -27,7 +27,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, Optional
 
-from memory_palace.config import is_postgres
+from memory_palace.config import is_postgres, get_instances
 from memory_palace.database import get_engine, init_db
 from memory_palace.services import (
     remember,
@@ -186,7 +186,7 @@ def _handle_message(params: Dict[str, Any]) -> Dict[str, Any]:
 
 # Dispatch table mapping method names to handlers
 DISPATCH: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
-    "memory_remember": lambda params: remember(**params),
+    "memory_set": lambda params: remember(**params),
     "memory_recall": lambda params: recall(**params),
     "memory_get": _handle_memory_get,
     "memory_recent": lambda params: get_recent_memories(**params),
@@ -208,11 +208,12 @@ def _start_listener_loop(
     """
     Start Postgres LISTEN thread for real-time pubsub.
 
-    Listens on memory_palace_msg_{instance_id} channel and emits
-    server-initiated events on new messages.
+    Listens on channels for ALL configured instances so that a bridge restart
+    is self-healing — no chicken-and-egg where agents need to make a tool call
+    before pubsub wake works.
 
     Args:
-        instance_id: The instance ID to listen for
+        instance_id: The bootstrap instance ID (from env)
         write_fn: Function to write events (thread-safe)
     """
     global _listener_conn
@@ -223,9 +224,30 @@ def _start_listener_loop(
         _listener_conn = raw_conn
 
         cursor = raw_conn.cursor()
-        channel = f"memory_palace_msg_{instance_id}"
-        cursor.execute(f"LISTEN {channel}")
+
+        # Subscribe to ALL configured instances, not just the bootstrap one.
+        # This makes bridge restart self-healing — pkill no longer wipes
+        # pubsub for every instance except the one in MEMORY_PALACE_INSTANCE_ID.
+        all_instances = get_instances()
+        channels_listened = []
+        for inst in all_instances:
+            channel = f"memory_palace_msg_{inst}"
+            # Quote channel name — Postgres LISTEN requires quotes for
+            # names containing hyphens (e.g., moltbook-triage)
+            cursor.execute(f'LISTEN "{channel}"')
+            channels_listened.append(channel)
+
+        # Also subscribe to system and sandy broadcast channels
+        for extra_channel in ["memory_palace_msg_system", "memory_palace_msg_sandy"]:
+            if extra_channel not in channels_listened:
+                cursor.execute(f'LISTEN "{extra_channel}"')
+                channels_listened.append(extra_channel)
+
         raw_conn.commit()
+        print(
+            f"[bridge/listener] LISTEN on {len(channels_listened)} channels: {', '.join(channels_listened)}",
+            file=sys.stderr,
+        )
 
         # Polling loop with cross-platform compatibility
         # Windows select.select doesn't work reliably with psycopg2 connections
@@ -246,6 +268,7 @@ def _start_listener_loop(
                                 "to": payload.get("to_instance"),
                                 "type": payload.get("message_type"),
                                 "subject": payload.get("subject"),
+                                "channel": payload.get("channel"),
                                 "id": payload.get("message_id"),
                                 "priority": payload.get("priority", 0),
                             },
@@ -354,6 +377,23 @@ def main() -> None:
                 )
                 break
 
+            elif method == "_get_instance_routes":
+                # Return instance_routes from config so the plugin can
+                # pre-seed its sessionRegistry without waiting for tool calls.
+                # This eliminates the chicken-and-egg after bridge restart.
+                from memory_palace.config import load_config
+                config = load_config()
+                routes = config.get("instance_routes", {})
+                instances = config.get("instances", [])
+                _write_response({
+                    "id": req_id,
+                    "result": {
+                        "instances": instances,
+                        "instance_routes": routes,
+                    },
+                })
+                continue
+
             elif method == "_subscribe":
                 # Dynamic channel subscription
                 channel = params.get("channel")
@@ -361,7 +401,7 @@ def main() -> None:
                     try:
                         with _listener_lock:
                             cursor = _listener_conn.cursor()
-                            cursor.execute(f"LISTEN {channel}")
+                            cursor.execute(f'LISTEN "{channel}"')
                             _listener_conn.commit()
                             cursor.close()
                         _write_response(
@@ -400,7 +440,7 @@ def main() -> None:
                     try:
                         with _listener_lock:
                             cursor = _listener_conn.cursor()
-                            cursor.execute(f"UNLISTEN {channel}")
+                            cursor.execute(f'UNLISTEN "{channel}"')
                             _listener_conn.commit()
                             cursor.close()
                         _write_response(
@@ -466,7 +506,7 @@ def main() -> None:
                             with _listener_lock:
                                 channel_name = _get_channel_name(message_channel, None)
                                 cursor = _listener_conn.cursor()
-                                cursor.execute(f"LISTEN {channel_name}")
+                                cursor.execute(f'LISTEN "{channel_name}"')
                                 _listener_conn.commit()
                                 cursor.close()
                             sys.stderr.write(
@@ -483,7 +523,7 @@ def main() -> None:
                             with _listener_lock:
                                 channel_name = _get_channel_name(message_channel, None)
                                 cursor = _listener_conn.cursor()
-                                cursor.execute(f"UNLISTEN {channel_name}")
+                                cursor.execute(f'UNLISTEN "{channel_name}"')
                                 _listener_conn.commit()
                                 cursor.close()
                             sys.stderr.write(
